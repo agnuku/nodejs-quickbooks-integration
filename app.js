@@ -8,6 +8,7 @@ app.set('views', path.join(__dirname, 'views'))
 app.set('view engine', 'ejs')
 app.use(express.static(path.join(__dirname, 'public')))
 app.use(session({secret: 'secret', resave: 'false', saveUninitialized: 'false'}))
+const port = process.env.PORT || 4000;
 
 app.use("/ed",function(req,res) {
 
@@ -485,9 +486,10 @@ console.log("QKD::",JSON.stringify(pushData) )
 })
 
 
-app.listen(4000, function () {
-  console.log('Example app listening on port 4000!')
-})
+app.listen(port, () => {
+    // Logging server start, remove this in production if not needed
+    console.log(`Server running on port ${port}`);
+  });
 // https.createServer(function (req, res) {
 //     res.writeHead(200, {'Content-Type': 'text/plain'});
 //     res.write('Hello World!');
