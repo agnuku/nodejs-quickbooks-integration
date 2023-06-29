@@ -21,8 +21,8 @@ router.get('/generalledger', function(req, res) {
     const oauthClient = req.oauthClient;
     const companyID = req.session.authResponse.realmId;
     
-    const startDate = '2015-01-01';
-    const endDate = '2015-06-30';
+    const startDate = '2022-01-01';
+    const endDate = '2022-12-31';
 
     const url = `${oauthClient.environment == 'sandbox' ? 'https://sandbox-quickbooks.api.intuit.com' : 'https://quickbooks.api.intuit.com'}/v3/company/${companyID}/reports/GeneralLedger`;
     
