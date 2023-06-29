@@ -3,40 +3,27 @@ const router = express.Router();
 const csrf = require('csrf');
 const tokens = new csrf();
 const logger = require('../logger'); // import the logger
-const session = require('express-session');
+
 const { OAuthClient } = require('intuit-oauth');
 
-const app = express();
-
-app.use(session({
-    secret: 'YourSecretKey', // replace with your secret key
-    resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false } // Note: use 'secure: true' for https connections
-}));
-
-const oauthClient = new OAuthClient({
-    clientId: 'YourClientId',
-    clientSecret: 'YourClientSecret',
-    environment: 'sandbox', // or 'production',
-    redirectUri: 'http://localhost:3000/callback'
-});
-
-app.use((req, res, next) => {
-    req.oauthClient = oauthClient;
-    next();
-});
+function calculateStartDate() {
+    let date = new Date();
+    date.setFullYear(date.getFullYear() - 1);
+    return date;
+}
 
 router.get('/generalledger', function(req, res) {
     logger.info('GET /generalledger route hit');
-    if(!req.session || !req.session.authResponse || !req.oauthClient) {
+    if(!req.session || !req.session.authResponse) {
         logger.warn('Session or auth response not available');
         return res.json({ error: 'Session or auth response not available' });
     }
     const oauthClient = req.oauthClient;
     const companyID = req.session.authResponse.realmId;
+    
     const startDate = '2022-01-01';
     const endDate = '2022-12-31';
+
     const url = `${oauthClient.environment == 'sandbox' ? 'https://sandbox-quickbooks.api.intuit.com' : 'https://quickbooks.api.intuit.com'}/v3/company/${companyID}/reports/GeneralLedger`;
     
     const queryParameters = {
@@ -69,7 +56,7 @@ router.get('/generalledger', function(req, res) {
 
 router.get('/companyinfo', function(req, res) {
     logger.info('GET /companyinfo route hit');
-    if(!req.session || !req.session.authResponse || !req.oauthClient) {
+    if(!req.session || !req.session.authResponse) {
         logger.warn('Session or auth response not available');
         return res.json({ error: 'Session or auth response not available' });
     }
@@ -97,6 +84,7 @@ router.get('/companyinfo', function(req, res) {
         res.status(500).json({ error: 'Error during company info retrieval' });
     });
 });
+
 
 router.get('/', function(req, res) {
     logger.info('GET / route hit');
@@ -128,7 +116,7 @@ router.get('/callback', function(req, res) {
     req.oauthClient.createToken(parseRedirect)
         .then(function(authResponse) {
             logger.debug('Token creation successful, saving session...');
-            req.session.authResponse = authResponse.getJson();
+            req.session.authResponse = authResponse.getJson(); // Corrected line
             req.session.save(function(err) {
                 if(err) {
                     logger.error("Error occurred while saving session: " + err.message);
@@ -142,10 +130,4 @@ router.get('/callback', function(req, res) {
             logger.error("Error occurred while creating token: " + e.message);
             res.status(500).json({ error: 'Error during token creation' });
         });
-});
-
-app.use('/', router);
-
-app.listen(3000, function() {
-    console.log('Example app listening on port 3000!');
 });
