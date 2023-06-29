@@ -2,8 +2,7 @@
 logs/
 *.log
 
-# Dependency directories
-node_modules/
+
 
 # Environment variables
 .env
