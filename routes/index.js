@@ -12,24 +12,46 @@ function calculateStartDate() {
     return date;
 }
 
-function getGeneralLedger(req) {
-    return new Promise((resolve, reject) => {
-        const url = `${req.oauthClient.environment === 'sandbox' ? 'https://sandbox-quickbooks.api.intuit.com' : 'https://quickbooks.api.intuit.com'}/v3/company/${req.session.authResponse.realmId}/reports/GeneralLedger?start_date=${calculateStartDate().toISOString().split('T')[0]}&end_date=${new Date().toISOString().split('T')[0]}`;
-        const requestObj = {
-            url: url,
-            headers: {
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${req.session.authResponse.access_token}`
-            }
-        };
+router.get('/generalledger', function(req, res) {
+    logger.info('GET /generalledger route hit');
+    if(!req.session || !req.session.authResponse) {
+        logger.warn('Session or auth response not available');
+        return res.json({ error: 'Session or auth response not available' });
+    }
+    const oauthClient = req.oauthClient;
+    const companyID = req.session.authResponse.realmId;
+    
+    const startDate = calculateStartDate();
+    const endDate = new Date();
 
-        req.oauthClient.makeApiCall(requestObj).then(response => {
-            resolve(response.json);
-        }).catch(e => {
-            reject(e);
+    const url = `${oauthClient.environment == 'sandbox' ? 'https://sandbox-quickbooks.api.intuit.com' : 'https://quickbooks.api.intuit.com'}/v3/company/${companyID}/reports/GeneralLedger`;
+    
+    const queryParameters = {
+        start_date: startDate,
+        end_date: endDate,
+        columns: 'account_name,subt_nat_amount',
+        source_account_type: 'Bank',
+        minorversion: 65
+    };
+    
+    const requestUri = oauthClient.token.getToken().token_type + ' ' + oauthClient.token.getToken().access_token;
+    const authHeaders = {
+        headers: {
+            Authorization: requestUri,
+            Accept: 'application/json'
+        }
+    };
+
+    oauthClient
+        .makeApiCall({url: url, method: 'GET', params: queryParameters, headers: authHeaders})
+        .then(function(authResponse){
+            res.json(authResponse.json());
+        })
+        .catch(function(e){
+            logger.error("Error occurred while fetching general ledger data: " + e.message);
+            res.status(500).json({ error: 'Error during general ledger data retrieval' });
         });
-    });
-}
+});
 
 router.get('/', function(req, res) {
     logger.info('GET / route hit');
@@ -75,14 +97,6 @@ router.get('/callback', function(req, res) {
             logger.error("Error occurred while creating token: " + e.message);
             res.status(500).json({ error: 'Error during token creation' });
         });
-});
-
-router.get('/generalledger', function(req, res) {
-    getGeneralLedger(req).then(response => {
-        res.json(response);
-    }).catch(e => {
-        res.status(500).json({error: e.message});
-    });
 });
 
 module.exports = router;
