@@ -1,9 +1,8 @@
-// routes/index.js
-
 const express = require('express');
 const router = express.Router();
 const csrf = require('csrf');
 const tokens = new csrf();
+const logger = require('../logger'); // import the logger
 
 const { OAuthClient } = require('intuit-oauth');
 
@@ -12,7 +11,7 @@ router.get('/', function(req, res) {
 });
 
 router.get('/connect', function(req, res) {
-    console.log("In /connect route, req.oauthClient: ", req.oauthClient);
+    logger.debug("In /connect route, req.oauthClient: ", req.oauthClient);
     
     // Add a null-check for req.oauthClient.scopes
     if (req.oauthClient && req.oauthClient.scopes && req.oauthClient.scopes.Accounting) {
@@ -39,13 +38,13 @@ router.get('/callback', function(req, res) {
             req.session.authResponse = authResponse.json();
             req.session.save(function(err) {
                 if(err) {
-                    console.log(err);
+                    logger.error("Error occurred while saving session: ", err);
                 }
                 res.redirect('/');
             });
         })
         .catch(function(e) {
-            console.error("Error occurred while creating token: ", e);
+            logger.error("Error occurred while creating token: ", e);
         });
 });
 

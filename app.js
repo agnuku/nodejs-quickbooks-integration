@@ -1,11 +1,11 @@
-// app.js
-
 const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
 const OAuthClient = require('intuit-oauth');
 const indexRouter = require('./routes/index');
 const config = require('./config.json');  // import the config.json file
+const winston = require('winston');  // import the winston library
+const logger = require('./logger');
 
 let app = express();
 
@@ -17,15 +17,17 @@ const redirectUri = process.env.NODE_ENV === 'production'
     ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
     : 'http://localhost:4000/callback';
 
+logger.debug('redirectUri: ', redirectUri);
+
 // Instantiate new client
 let oauthClient = new OAuthClient({
     clientId: config.clientId,
     clientSecret: config.clientSecret,
     environment: 'sandbox',
     redirectUri: redirectUri,
-    logging: true, // add this line
+    logging: true,
 });
-console.log("OAuth Client: ", oauthClient);
+logger.info("OAuth Client: ", oauthClient);
 app.use(session({
     secret: config.sessionSecret,
     resave: false,
@@ -38,12 +40,12 @@ app.use(bodyParser.json());
 // Set oauthClient in middleware so we can access it in routes
 app.use((req, res, next) => {
     req.oauthClient = oauthClient;
-    console.log("req.oauthClient: ", req.oauthClient);
+    logger.debug("req.oauthClient: ", req.oauthClient);
     next();
 });
 
 app.use('/', indexRouter);
 
 app.listen(PORT, function(){
-    console.log(`Started on port ${PORT}`);
+    logger.info(`Started on port ${PORT}`);
 });
