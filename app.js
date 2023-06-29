@@ -4,7 +4,6 @@ const bodyParser = require('body-parser');
 const OAuthClient = require('intuit-oauth');
 const indexRouter = require('./routes/index');
 const config = require('./config.json');  // import the config.json file
-const winston = require('winston');  // import the winston library
 const logger = require('./logger');
 
 let app = express();
@@ -27,7 +26,7 @@ let oauthClient = new OAuthClient({
     redirectUri: redirectUri,
     logging: true,
 });
-logger.info("OAuth Client: ", oauthClient);
+logger.info("OAuth Client created: ", oauthClient);
 app.use(session({
     secret: config.sessionSecret,
     resave: false,
@@ -40,7 +39,7 @@ app.use(bodyParser.json());
 // Set oauthClient in middleware so we can access it in routes
 app.use((req, res, next) => {
     req.oauthClient = oauthClient;
-    logger.debug("req.oauthClient: ", req.oauthClient);
+    logger.debug("OAuthClient added to request object: ", req.oauthClient);
     next();
 });
 
