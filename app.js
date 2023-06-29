@@ -1,7 +1,7 @@
 const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
-const OAuthClient = require('intuit-oauth');
+const { OAuthClient } = require('intuit-oauth');
 const indexRouter = require('./routes/index');
 const config = require('./config.json');  // import the config.json file
 const logger = require('./logger');
