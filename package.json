@@ -10,20 +10,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "atob": "^2.0.3",
-    "btoa": "^1.1.2",
-    "client-oauth2": "^4.3.3",
-    "csrf": "^3.0.4",
-    "ejs": "^3.1.9",
-    "expect": "^29.5.0",
-    "express": "^4.14.0",
-    "express-session": "^1.14.2",
-    "fs": "0.0.1-security",
-    "googleapis": "^118.0.0",
-    "https": "^1.0.0",
-    "jsonwebtoken": "^9.0.0",
-    "path": "^0.12.7",
-    "request": "^2.78.0",
-    "rsa-pem-from-mod-exp": "^0.8.4"
+    "body-parser": "^1.19.0",
+    "csrf": "^3.1.0",
+    "express": "^4.17.1",
+    "express-session": "^1.17.2",
+    "intuit-oauth": "^2.0.6"
   }
 }
