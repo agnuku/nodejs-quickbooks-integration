@@ -13,11 +13,18 @@ router.get('/', function(req, res) {
 
 router.get('/connect', function(req, res) {
     console.log("In /connect route, req.oauthClient: ", req.oauthClient);
-    const authUri = req.oauthClient.authorizeUri({
-        scope: [req.oauthClient.scopes.Accounting],
-        state: tokens.create(req.sessionID),
-    });
-    res.redirect(authUri);
+    
+    // Add a null-check for req.oauthClient.scopes
+    if (req.oauthClient && req.oauthClient.scopes && req.oauthClient.scopes.Accounting) {
+        const authUri = req.oauthClient.authorizeUri({
+            scope: [req.oauthClient.scopes.Accounting],
+            state: tokens.create(req.sessionID),
+        });
+        res.redirect(authUri);
+    } else {
+        // Return an error response or handle the case when req.oauthClient.scopes.Accounting is not available
+        res.status(500).json({ error: 'QuickBooks scope not available' });
+    }
 });
 
 router.get('/callback', function(req, res) {
