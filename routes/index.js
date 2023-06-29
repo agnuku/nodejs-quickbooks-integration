@@ -38,7 +38,7 @@ router.get('/callback', function(req, res) {
     req.oauthClient.createToken(parseRedirect)
         .then(function(authResponse) {
             logger.debug('Token creation successful, saving session...');
-            req.session.authResponse = authResponse.json();
+            req.session.authResponse = authResponse.getJson(); // Corrected line
             req.session.save(function(err) {
                 if(err) {
                     // Logging the error message instead of the whole error object
@@ -55,5 +55,6 @@ router.get('/callback', function(req, res) {
             res.status(500).json({ error: 'Error during token creation' });
         });
 });
+
 
 module.exports = router;
