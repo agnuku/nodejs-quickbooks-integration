@@ -13,19 +13,19 @@ router.get('/', function(req, res) {
 
 router.get('/connect', function(req, res) {
     logger.info('GET /connect route hit');
-    logger.debug("In /connect route, req.oauthClient: ", req.oauthClient);
+    // Logging only the clientId of the oauthClient
+    logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
     
-    // Add a null-check for req.oauthClient.scopes
     if (req.oauthClient && req.oauthClient.scopes && req.oauthClient.scopes.Accounting) {
         logger.debug('Authorizing URI with scopes...');
         const authUri = req.oauthClient.authorizeUri({
             scope: [req.oauthClient.scopes.Accounting],
             state: tokens.create(req.sessionID),
         });
-        logger.info('Redirecting to: ', authUri);
+        // Use string concatenation to include authUri in the log
+        logger.info('Redirecting to: ' + authUri);
         res.redirect(authUri);
     } else {
-        // Return an error response or handle the case when req.oauthClient.scopes.Accounting is not available
         logger.warn('QuickBooks scope not available, sending 500 response');
         res.status(500).json({ error: 'QuickBooks scope not available' });
     }
@@ -47,7 +47,8 @@ router.get('/callback', function(req, res) {
             req.session.authResponse = authResponse.json();
             req.session.save(function(err) {
                 if(err) {
-                    logger.error("Error occurred while saving session: ", err);
+                    // Logging the error message instead of the whole error object
+                    logger.error("Error occurred while saving session: " + err.message);
                     return;
                 }
                 logger.info('Session saved successfully, redirecting to /');
@@ -55,7 +56,8 @@ router.get('/callback', function(req, res) {
             });
         })
         .catch(function(e) {
-            logger.error("Error occurred while creating token: ", e);
+            // Logging the error message instead of the whole error object
+            logger.error("Error occurred while creating token: " + e.message);
             res.status(500).json({ error: 'Error during token creation' });
         });
 });

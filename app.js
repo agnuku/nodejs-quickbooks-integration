@@ -16,7 +16,7 @@ const redirectUri = process.env.NODE_ENV === 'production'
     ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
     : 'http://localhost:4000/callback';
 
-logger.debug('redirectUri: ', redirectUri);
+logger.debug('redirectUri: ' + redirectUri);
 
 // Instantiate new client
 let oauthClient = new OAuthClient({
@@ -26,7 +26,10 @@ let oauthClient = new OAuthClient({
     redirectUri: redirectUri,
     logging: true,
 });
-logger.info("OAuth Client created: ", oauthClient);
+
+// Log only key properties of the oauthClient
+logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
+
 app.use(session({
     secret: config.sessionSecret,
     resave: false,
@@ -39,7 +42,7 @@ app.use(bodyParser.json());
 // Set oauthClient in middleware so we can access it in routes
 app.use((req, res, next) => {
     req.oauthClient = oauthClient;
-    logger.debug("OAuthClient added to request object: ", req.oauthClient);
+    logger.debug("OAuthClient added to request object with clientId: " + req.oauthClient.clientId);
     next();
 });
 
