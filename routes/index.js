@@ -12,6 +12,7 @@ router.get('/', function(req, res) {
 });
 
 router.get('/connect', function(req, res) {
+    console.log("In /connect route, req.oauthClient: ", req.oauthClient);
     const authUri = req.oauthClient.authorizeUri({
         scope: [req.oauthClient.scopes.Accounting],
         state: tokens.create(req.sessionID),

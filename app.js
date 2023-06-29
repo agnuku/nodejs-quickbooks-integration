@@ -25,7 +25,7 @@ let oauthClient = new OAuthClient({
     redirectUri: redirectUri,
     logging: true, // add this line
 });
-
+console.log("OAuth Client: ", oauthClient);
 app.use(session({
     secret: config.sessionSecret,
     resave: false,
@@ -38,6 +38,7 @@ app.use(bodyParser.json());
 // Set oauthClient in middleware so we can access it in routes
 app.use((req, res, next) => {
     req.oauthClient = oauthClient;
+    console.log("req.oauthClient: ", req.oauthClient);
     next();
 });
 
