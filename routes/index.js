@@ -24,26 +24,23 @@ router.get('/generalledger', function(req, res) {
     const startDate = calculateStartDate();
     const endDate = new Date();
 
+    // Convert dates to YYYY-MM-DD format
+    const startDateFormatted = startDate.toISOString().split('T')[0];
+    const endDateFormatted = endDate.toISOString().split('T')[0];
+
     const url = `${oauthClient.environment == 'sandbox' ? 'https://sandbox-quickbooks.api.intuit.com' : 'https://quickbooks.api.intuit.com'}/v3/company/${companyID}/reports/GeneralLedger`;
-    
-    const queryParameters = {
-        start_date: startDate,
-        end_date: endDate,
-        columns: 'account_name,subt_nat_amount',
-        source_account_type: 'Bank',
-        minorversion: 65
-    };
-    
-    const requestUri = oauthClient.token.getToken().token_type + ' ' + oauthClient.token.getToken().access_token;
-    const authHeaders = {
-        headers: {
-            Authorization: requestUri,
-            Accept: 'application/json'
-        }
-    };
+
+    const requestUri = url 
+        + '?start_date=' + startDateFormatted
+        + '&end_date=' + endDateFormatted
+        + '&columns=account_name,subt_nat_amount'
+        + '&source_account_type=Bank'
+        + '&minorversion=65';
+
+    const authHeaders = 'Bearer ' + oauthClient.token.getToken().access_token;
 
     oauthClient
-    .makeApiCall({url: url, method: 'GET', params: queryParameters, headers: authHeaders})
+    .makeApiCall({url: requestUri, method: 'GET', headers: {'Authorization': authHeaders, 'Accept': 'application/json'}})
     .then(function(authResponse){
         logger.debug("General ledger response: " + JSON.stringify(authResponse));
         res.json(authResponse);
@@ -54,6 +51,7 @@ router.get('/generalledger', function(req, res) {
     });
 
 });
+
 
 router.get('/', function(req, res) {
     logger.info('GET / route hit');
