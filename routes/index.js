@@ -16,24 +16,18 @@ router.get('/connect', function(req, res) {
     // Logging only the clientId of the oauthClient
     logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
     
-    if (req.oauthClient && req.oauthClient.scopes && req.oauthClient.scopes.Accounting) {
-        logger.debug('Authorizing URI with scopes...');
-        const authUri = req.oauthClient.authorizeUri({
-            scope: [req.oauthClient.scopes.Accounting],
-            state: tokens.create(req.sessionID),
-        });
-        // Use string concatenation to include authUri in the log
-        logger.info('Redirecting to: ' + authUri);
-        res.redirect(authUri);
-    } else {
-        logger.warn('QuickBooks scope not available, sending 500 response');
-        res.status(500).json({ error: 'QuickBooks scope not available' });
-    }
+    const authUri = req.oauthClient.authorizeUri({
+        scope: ['com.intuit.quickbooks.accounting'],
+        state: tokens.create(req.sessionID),
+    });
+    // Use string concatenation to include authUri in the log
+    logger.info('Redirecting to: ' + authUri);
+    res.redirect(authUri);
 });
 
 router.get('/callback', function(req, res) {
     logger.info('GET /callback route hit');
-    const parseRedirect = req.url;
+    const parseRedirect = req.protocol + '://' + req.get('host') + req.originalUrl;
 
     if (!tokens.verify(req.sessionID, req.query.state)) {
         logger.warn('Invalid state, sending error response');
@@ -49,7 +43,7 @@ router.get('/callback', function(req, res) {
                 if(err) {
                     // Logging the error message instead of the whole error object
                     logger.error("Error occurred while saving session: " + err.message);
-                    return;
+                    return res.status(500).json({ error: 'Error during session saving' });
                 }
                 logger.info('Session saved successfully, redirecting to /');
                 res.redirect('/');
