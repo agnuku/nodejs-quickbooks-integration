@@ -23,6 +23,7 @@ let oauthClient = new OAuthClient({
     clientSecret: config.clientSecret,
     environment: 'sandbox',
     redirectUri: redirectUri,
+    logging: true, // add this line
 });
 
 app.use(session({

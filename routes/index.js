@@ -13,7 +13,7 @@ router.get('/', function(req, res) {
 
 router.get('/connect', function(req, res) {
     const authUri = req.oauthClient.authorizeUri({
-        scope: [OAuthClient.scopes.Accounting],
+        scope: [req.oauthClient.scopes.Accounting],
         state: tokens.create(req.sessionID),
     });
     res.redirect(authUri);
@@ -37,7 +37,7 @@ router.get('/callback', function(req, res) {
             });
         })
         .catch(function(e) {
-            console.error(e);
+            console.error("Error occurred while creating token: ", e);
         });
 });
 
