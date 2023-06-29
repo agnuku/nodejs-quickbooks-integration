@@ -54,6 +54,36 @@ router.get('/generalledger', function(req, res) {
     });
 });
 
+router.get('/companyinfo', function(req, res) {
+    logger.info('GET /companyinfo route hit');
+    if(!req.session || !req.session.authResponse) {
+        logger.warn('Session or auth response not available');
+        return res.json({ error: 'Session or auth response not available' });
+    }
+    const oauthClient = req.oauthClient;
+    const companyID = req.session.authResponse.realmId;
+
+    const url = `${oauthClient.environment == 'sandbox' ? 'https://sandbox-quickbooks.api.intuit.com' : 'https://quickbooks.api.intuit.com'}/v3/company/${companyID}/companyinfo/${companyID}`;
+
+    const requestUri = oauthClient.token.getToken().token_type + ' ' + oauthClient.token.getToken().access_token;
+    const authHeaders = {
+        headers: {
+            Authorization: requestUri,
+            Accept: 'application/json'
+        }
+    };
+
+    oauthClient
+    .makeApiCall({url: url, method: 'GET', headers: authHeaders})
+    .then(function(authResponse){
+        logger.debug("Company info response: " + JSON.stringify(authResponse));
+        res.json(authResponse);
+    })
+    .catch(function(e){
+        logger.error("Error occurred while fetching company info: " + e.message);
+        res.status(500).json({ error: 'Error during company info retrieval' });
+    });
+});
 
 
 router.get('/', function(req, res) {
