@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 4000;
 
 // Define redirectUri based on the environment
 const redirectUri = process.env.NODE_ENV === 'production' 
-    ? 'https://your-production-app.herokuapp.com/callback'
+    ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
     : 'http://localhost:4000/callback';
 
 // Instantiate new client
