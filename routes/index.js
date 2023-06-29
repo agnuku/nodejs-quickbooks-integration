@@ -43,14 +43,16 @@ router.get('/generalledger', function(req, res) {
     };
 
     oauthClient
-        .makeApiCall({url: url, method: 'GET', params: queryParameters, headers: authHeaders})
-        .then(function(authResponse){
-            res.json(authResponse.json());
-        })
-        .catch(function(e){
-            logger.error("Error occurred while fetching general ledger data: " + e.message);
-            res.status(500).json({ error: 'Error during general ledger data retrieval' });
-        });
+    .makeApiCall({url: url, method: 'GET', params: queryParameters, headers: authHeaders})
+    .then(function(authResponse){
+        logger.debug("General ledger response: " + JSON.stringify(authResponse));
+        res.json(authResponse);
+    })
+    .catch(function(e){
+        logger.error("Error occurred while fetching general ledger data: " + e.message);
+        res.status(500).json({ error: 'Error during general ledger data retrieval' });
+    });
+
 });
 
 router.get('/', function(req, res) {
