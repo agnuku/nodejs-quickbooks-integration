@@ -1,56 +1,81 @@
-const express = require('express');
-const session = require('express-session');
-const bodyParser = require('body-parser');
-const OAuthClient = require('intuit-oauth');
-const indexRouter = require('./routes/index');
-const config = require('./config.json');  // import the config.json file
-const logger = require('./logger');
+require('dotenv').config();
 
-let app = express();
+const express = require('express');
+const path = require('path');
+const OAuthClient = require('intuit-oauth');
+const bodyParser = require('body-parser');
+
+const app = express();
 
 // Get the port from environment or use 4000 as default
 const PORT = process.env.PORT || 4000;
 
-logger.debug('process.env.NODE_ENV: ' + process.env.NODE_ENV);
-logger.debug('process.env.PORT: ' + process.env.PORT);
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, '/public')));
+app.engine('html', require('ejs').renderFile);
+app.set('view engine', 'html');
+app.use(bodyParser.json())
 
-// Define redirectUri based on the environment
-const redirectUri = process.env.NODE_ENV === 'production' 
-    ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
-    : 'http://localhost:4000/callback';
+let oauth2_token_json = null;
+let oauthClient = null;
 
-logger.debug('redirectUri: ' + redirectUri);
-
-// Instantiate new client
-let oauthClient = new OAuthClient({
-    clientId: config.clientId,
-    clientSecret: config.clientSecret,
-    environment: 'sandbox',
-    redirectUri: redirectUri,
-    logging: true,
+app.get('/', (req, res) => {
+    res.render('index');
 });
 
-// Log only key properties of the oauthClient
-logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
+app.get('/authUri', bodyParser.urlencoded({ extended: false }), (req, res) => {
+    oauthClient = new OAuthClient({
+        clientId: process.env.CLIENT_ID,
+        clientSecret: process.env.CLIENT_SECRET,
+        environment: process.env.ENVIRONMENT,
+        redirectUri: process.env.REDIRECT_URI
+    });
 
-app.use(session({
-    secret: config.sessionSecret,
-    resave: false,
-    saveUninitialized: true,
-}));
-
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
-
-// Set oauthClient in middleware so we can access it in routes
-app.use((req, res, next) => {
-    req.oauthClient = oauthClient;
-    logger.debug("OAuthClient added to request object with clientId: " + req.oauthClient.clientId);
-    next();
+    const authUri = oauthClient.authorizeUri({ scope: [OAuthClient.scopes.Accounting], state: 'intuit-test' });
+    res.send(authUri);
 });
 
-app.use('/', indexRouter);
+app.get('/callback', async (req, res) => {
+    try {
+        const authResponse = await oauthClient.createToken(req.url);
+        oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
+        res.send(oauth2_token_json);
+    } catch(e) {
+        console.error(e);
+        res.status(500).send('Failed to create token');
+    }
+});
+
+app.get('/retrieveToken', (req, res) => {
+    res.send(oauth2_token_json);
+});
+
+app.get('/refreshAccessToken', async (req, res) => {
+    try {
+        const authResponse = await oauthClient.refresh();
+        oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
+        res.send(oauth2_token_json);
+    } catch(e) {
+        console.error(e);
+        res.status(500).send('Failed to refresh token');
+    }
+});
+
+app.get('/getCompanyInfo', async (req, res) => {
+    const companyID = oauthClient.getToken().realmId;
+    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
+    const finalUrl = `${url}v3/company/${companyID}/companyinfo/${companyID}`;
+
+    try {
+        const authResponse = await oauthClient.makeApiCall({ url: finalUrl });
+        res.send(JSON.parse(authResponse.text()));
+    } catch(e) {
+        console.error(e);
+        res.status(500).send('Failed to get company info');
+    }
+});
 
 app.listen(PORT, function(){
-    logger.info(`Started on port ${PORT}`);
+    console.log(`Started on port ${PORT}`);
 });
+
