@@ -39,7 +39,7 @@ let oauthClient = new OAuthClient({
 logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
 
 app.use(session({
-    secret: process.env.SESSION_SECRET,
+    secret: config.sessionSecret,
     resave: false,
     saveUninitialized: true,
 }));
