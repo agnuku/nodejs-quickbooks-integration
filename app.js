@@ -141,16 +141,24 @@ app.get('/getGeneralLedger', [
         const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
-        logger.error("Error in /getGeneralLedger: ", e);
-        res.status(500).json({
-            success: false,
-            message: `Failed to get general ledger: ${e.message}`,
-            stack: process.env.NODE_ENV === 'development' ? e.stack : undefined, // send stack trace only in development
-        });
+        next(new CustomError({ message: `Failed to get general ledger: ${e.message}`, status: 500 }));
     }
 });
 
+// Add error handling middleware
+app.use((err, req, res, next) => {
+    logger.error(err.message);
+    if (process.env.NODE_ENV !== 'production') {
+        logger.error(err.stack);
+    }
 
+    res.status(err.status || 500).send({
+        error: {
+            message: err.message,
+            status: err.status,
+        }
+    });
+});
 
 app.listen(PORT, function(){
     console.log(`Started on port ${PORT}`);
