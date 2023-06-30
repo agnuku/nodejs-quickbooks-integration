@@ -81,6 +81,26 @@ app.get('/refreshAccessToken', async (req, res) => {
     }
 });
 
+app.get('/getCompanyInfo', async (req, res) => {
+    if (!req.session.oauth2_token_json) {
+        return res.status(400).send('No OAuth token saved in the session');
+    }
+    
+    oauthClient.setToken(req.session.oauth2_token_json);
+
+    const companyID = oauthClient.getToken().realmId;
+    const url = oauthClient.environment == 'sandbox' ? 'https://sandbox-quickbooks.api.intuit.com/' : 'https://quickbooks.api.intuit.com/';
+    const finalUrl = `${url}v3/company/${companyID}/companyinfo/${companyID}`;
+
+    try {
+        const authResponse = await oauthClient.makeApiCall({ url: finalUrl });
+        res.send(JSON.parse(authResponse.text()));
+    } catch(e) {
+        console.error("Error in /getCompanyInfo: ", e);
+        res.status(500).send(`Failed to get company info: ${e.message}`);
+    }
+});
+
 app.get('/getGeneralLedger', async (req, res) => {
     if (!req.session.oauth2_token_json) {
         return res.status(400).send('No OAuth token saved in the session');
@@ -89,10 +109,8 @@ app.get('/getGeneralLedger', async (req, res) => {
     oauthClient.setToken(req.session.oauth2_token_json);
 
     const companyID = oauthClient.getToken().realmId;
-
     const startDate = '2022-01-01';
     const endDate = '2022-12-31';
-
     const url = oauthClient.environment == 'sandbox' 
         ? `https://sandbox-quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger`
         : `https://quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger`;
@@ -114,26 +132,6 @@ app.get('/getGeneralLedger', async (req, res) => {
     }
 });
 
-
-app.get('/getCompanyInfo', async (req, res) => {
-    if (!req.session.oauth2_token_json) {
-        return res.status(400).send('No OAuth token saved in the session');
-    }
-    
-    oauthClient.setToken(req.session.oauth2_token_json);
-
-    const companyID = oauthClient.getToken().realmId;
-    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
-    const finalUrl = `${url}v3/company/${companyID}/companyinfo/${companyID}`;
-
-    try {
-        const authResponse = await oauthClient.makeApiCall({ url: finalUrl });
-        res.send(JSON.parse(authResponse.text()));
-    } catch(e) {
-        console.error("Error in /getCompanyInfo: ", e);
-        res.status(500).send(`Failed to get company info: ${e.message}`);
-    }
-});
 
 app.listen(PORT, function(){
     console.log(`Started on port ${PORT}`);
