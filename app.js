@@ -8,6 +8,8 @@ const config = require('./config.json');
 const logger = require('./logger');
 const csrf = require('csrf');
 const tokens = new csrf(); 
+const { check, validationResult } = require('express-validator');
+
 
 let app = express();
 
@@ -102,7 +104,17 @@ app.get('/getCompanyInfo', async (req, res) => {
     }
 });
 
-app.get('/getGeneralLedger', async (req, res) => {
+app.get('/getGeneralLedger', [
+    check('start_date').isDate(),
+    check('end_date').isDate(),
+    check('accounting_method').isIn(['Cash', 'Accrual']),
+    // Add more validations as needed...
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
     const companyID = oauthClient.getToken().realmId;
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
     const finalUrl = `${url}v3/company/${companyID}/reports/GeneralLedger`;
@@ -120,11 +132,10 @@ app.get('/getGeneralLedger', async (req, res) => {
         res.status(500).json({
             success: false,
             message: `Failed to get general ledger: ${e.message}`,
-            stack: e.stack // send stack trace only in development
+            stack: process.env.NODE_ENV === 'development' ? e.stack : undefined, // send stack trace only in development
         });
     }
 });
-
 
 
 app.listen(PORT, function(){

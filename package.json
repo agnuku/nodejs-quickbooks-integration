@@ -16,6 +16,7 @@
     "ejs": "^3.1.9",
     "express": "^4.17.1",
     "express-session": "^1.17.2",
+    "express-validator": "^7.0.1",
     "intuit-oauth": "^2.0.6",
     "winston": "^3.9.0"
   }
