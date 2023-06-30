@@ -89,10 +89,12 @@ app.get('/getCompanyInfo', async function(req, res){
 
         oauthClient.setToken(req.session.oauth2_token_json);
         
-        var companyID = oauthClient.getToken().realmId;
-        var url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
+        const companyID = oauthClient.getToken().realmId;
+        const url = oauthClient.environment == 'sandbox' 
+            ? `https://sandbox-quickbooks.api.intuit.com/v3/company/${companyID}/companyinfo/${companyID}`
+            : `https://quickbooks.api.intuit.com/v3/company/${companyID}/companyinfo/${companyID}`;
 
-        var authResponse = await oauthClient.makeApiCall({url: url + 'v3/company/' + companyID +'/companyinfo/' + companyID});
+        const authResponse = await oauthClient.makeApiCall({url: url});
 
         console.log("The response for API call is :"+JSON.stringify(authResponse));
         res.send(JSON.parse(authResponse.text()));
@@ -102,36 +104,36 @@ app.get('/getCompanyInfo', async function(req, res){
     }
 });
 
-    app.get('/getGeneralLedger', async (req, res) => {
-        try {
-            if (!req.session.oauth2_token_json) {
-                return res.status(400).send('No OAuth token saved in the session');
-            }
-        
-            oauthClient.setToken(req.session.oauth2_token_json);
-    
-            const companyID = oauthClient.getToken().realmId;
-            const startDate = '2022-01-01';
-            const endDate = '2022-12-31';
-            const url = oauthClient.environment == 'sandbox' 
-                ? `https://sandbox-quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger/${companyID}`
-                : `https://quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger/${companyID}`;
-    
-            const queryParameters = {
-                start_date: startDate,
-                end_date: endDate,
-                columns: 'account_name,subt_nat_amount',
-                source_account_type: 'Bank',
-                minorversion: 65
-            };
-    
-            const authResponse = await oauthClient.makeApiCall({ url: url, method: 'GET', params: queryParameters });
-            res.send(JSON.parse(authResponse.text()));
-        } catch(e) {
-            console.error("Error in /getGeneralLedger: ", e);
-            res.status(500).send(`Failed to get general ledger data: ${e.message}`);
+
+app.get('/getGeneralLedger', async (req, res) => {
+    try {
+        if (!req.session.oauth2_token_json) {
+            return res.status(400).send('No OAuth token saved in the session');
         }
-    });
+
+        oauthClient.setToken(req.session.oauth2_token_json);
+
+        const companyID = oauthClient.getToken().realmId;
+        const startDate = '2022-06-29';
+        const endDate = '2023-06-29';
+        const url = oauthClient.environment == 'sandbox' 
+            ? `https://sandbox-quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger`
+            : `https://quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger`;
+
+        const queryParameters = {
+            start_date: startDate,
+            end_date: endDate,
+            columns: 'account_name,subt_nat_amount',
+        };
+
+        const authResponse = await oauthClient.makeApiCall({ url: url, method: 'GET', params: queryParameters });
+        res.send(JSON.parse(authResponse.text()));
+    } catch(e) {
+        console.error("Error in /getGeneralLedger: ", e);
+        res.status(500).send(`Failed to get general ledger data: ${e.message}`);
+    }
+});
+
     
 
 app.listen(PORT, function(){
