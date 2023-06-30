@@ -28,8 +28,8 @@ logger.debug('redirectUri: ' + redirectUri);
 
 // Instantiate new client
 let oauthClient = new OAuthClient({
-    clientId: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
+    clientId: config.clientId,
+    clientSecret: config.clientSecret,
     environment: 'sandbox',
     redirectUri: redirectUri,
     logging: true,
