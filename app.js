@@ -81,57 +81,58 @@ app.get('/refreshAccessToken', async (req, res) => {
     }
 });
 
-app.get('/getCompanyInfo', async (req, res) => {
-    if (!req.session.oauth2_token_json) {
-        return res.status(400).send('No OAuth token saved in the session');
-    }
-    
-    oauthClient.setToken(req.session.oauth2_token_json);
-
-    const companyID = oauthClient.getToken().realmId;
-    const url = oauthClient.environment == 'sandbox' ? ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
-    const finalUrl = `${url}v3/company/${companyID}/companyinfo/${companyID}`;
-
+app.get('/getCompanyInfo', async function(req, res){
     try {
-        const authResponse = await oauthClient.makeApiCall({ url: finalUrl });
+        if (!req.session.oauth2_token_json) {
+            return res.status(400).send('No OAuth token saved in the session');
+        }
+
+        oauthClient.setToken(req.session.oauth2_token_json);
+        
+        var companyID = oauthClient.getToken().realmId;
+        var url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
+
+        var authResponse = await oauthClient.makeApiCall({url: url + 'v3/company/' + companyID +'/companyinfo/' + companyID});
+
+        console.log("The response for API call is :"+JSON.stringify(authResponse));
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
-        console.error("Error in /getCompanyInfo: ", e);
-        res.status(500).send(`Failed to get company info: ${e.message}`);
+        console.error(e);
+        res.status(500).send(e.toString());
     }
 });
 
-app.get('/getGeneralLedger', async (req, res) => {
-    if (!req.session.oauth2_token_json) {
-        return res.status(400).send('No OAuth token saved in the session');
-    }
+    app.get('/getGeneralLedger', async (req, res) => {
+        try {
+            if (!req.session.oauth2_token_json) {
+                return res.status(400).send('No OAuth token saved in the session');
+            }
+        
+            oauthClient.setToken(req.session.oauth2_token_json);
     
-    oauthClient.setToken(req.session.oauth2_token_json);
-
-    const companyID = oauthClient.getToken().realmId;
-    const startDate = '2022-01-01';
-    const endDate = '2022-12-31';
-    const url = oauthClient.environment == 'sandbox' 
-        ? `https://sandbox-quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger/${companyID}`;
-        : `https://quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger/${companyID}`;
-
-    const queryParameters = {
-        start_date: startDate,
-        end_date: endDate,
-        columns: 'account_name,subt_nat_amount',
-        source_account_type: 'Bank',
-        minorversion: 65
-    };
-
-    try {
-        const authResponse = await oauthClient.makeApiCall({ url: url, method: 'GET', params: queryParameters });
-        res.send(JSON.parse(authResponse.text()));
-    } catch(e) {
-        console.error("Error in /getGeneralLedger: ", e);
-        res.status(500).send(`Failed to get general ledger data: ${e.message}`);
-    }
-});
-
+            const companyID = oauthClient.getToken().realmId;
+            const startDate = '2022-01-01';
+            const endDate = '2022-12-31';
+            const url = oauthClient.environment == 'sandbox' 
+                ? `https://sandbox-quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger/${companyID}`
+                : `https://quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger/${companyID}`;
+    
+            const queryParameters = {
+                start_date: startDate,
+                end_date: endDate,
+                columns: 'account_name,subt_nat_amount',
+                source_account_type: 'Bank',
+                minorversion: 65
+            };
+    
+            const authResponse = await oauthClient.makeApiCall({ url: url, method: 'GET', params: queryParameters });
+            res.send(JSON.parse(authResponse.text()));
+        } catch(e) {
+            console.error("Error in /getGeneralLedger: ", e);
+            res.status(500).send(`Failed to get general ledger data: ${e.message}`);
+        }
+    });
+    
 
 app.listen(PORT, function(){
     console.log(`Started on port ${PORT}`);
