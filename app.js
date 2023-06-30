@@ -13,7 +13,7 @@ const { check, validationResult } = require('express-validator');
 
 let app = express();
 
-// Get the port from environment or use 4000 as default
+// Get the port from environment or use 5000 as default
 const PORT = process.env.PORT || 5000;
 
 logger.debug('process.env.NODE_ENV: ' + process.env.NODE_ENV);
@@ -21,16 +21,16 @@ logger.debug('process.env.PORT: ' + process.env.PORT);
 
 // Define redirectUri based on the environment
 const redirectUri = process.env.NODE_ENV === 'production' 
-    ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
-    : 'http://localhost:4000/callback';
+    ? process.env.REDIRECT_URL_PROD
+    : process.env.REDIRECT_URL_DEV;
 
 logger.debug('redirectUri: ' + redirectUri);
 
 // Instantiate new client
 let oauthClient = new OAuthClient({
-    clientId: config.clientId,
-    clientSecret: config.clientSecret,
-    environment: 'sandbox',
+    clientId: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
     redirectUri: redirectUri,
     logging: true,
 });
@@ -38,8 +38,16 @@ let oauthClient = new OAuthClient({
 // Log only key properties of the oauthClient
 logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
 
+//This custom class will allow us to throw specific errors with context
+class CustomError extends Error {
+    constructor({ message, status }) {
+        super(message);
+        this.status = status;
+    }
+}
+
 app.use(session({
-    secret: config.sessionSecret,
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true,
 }));
@@ -114,7 +122,7 @@ app.get('/getGeneralLedger', [
     check('end_date').isDate(),
     check('accounting_method').isIn(['Cash', 'Accrual']),
     // Add more validations as needed...
-], async (req, res) => {
+], async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ success: false, errors: errors.array() });
@@ -133,16 +141,24 @@ app.get('/getGeneralLedger', [
         const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
-        logger.error("Error in /getGeneralLedger: ", e);
-        res.status(500).json({
-            success: false,
-            message: `Failed to get general ledger: ${e.message}`,
-            stack: process.env.NODE_ENV === 'development' ? e.stack : undefined, // send stack trace only in development
-        });
+        next(new CustomError({ message: `Failed to get general ledger: ${e.message}`, status: 500 }));
     }
 });
 
+// Add error handling middleware
+app.use((err, req, res, next) => {
+    logger.error(err.message);
+    if (process.env.NODE_ENV !== 'production') {
+        logger.error(err.stack);
+    }
 
+    res.status(err.status || 500).send({
+        error: {
+            message: err.message,
+            status: err.status,
+        }
+    });
+});
 
 app.listen(PORT, function(){
     console.log(`Started on port ${PORT}`);
