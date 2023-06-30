@@ -60,3 +60,8 @@ Callback URL
 routes/index.js contains the callback route (/callback) that receives the authorization code, makes the bearer token exchange, and stores the access and refresh tokens in session. It then redirects to the home page.
 
 This QuickBooks Node.js OAuth2 Integration App is a simple application to demonstrate the OAuth2 flow with Intuit's QuickBooks API. It does not include any specific QuickBooks API calls beyond authentication and authorization. For more advanced usage, refer to Intuit's API documentation and examples.
+
+
+General Ledger query
+Using parameters
+/getGeneralLedger?start_date=2023-01-01&end_date=2023-06-30&accounting_method=Accrual

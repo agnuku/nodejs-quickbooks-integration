@@ -107,13 +107,9 @@ app.get('/getGeneralLedger', async (req, res) => {
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
     const finalUrl = `${url}v3/company/${companyID}/reports/GeneralLedger`;
 
-    // Add your query parameters
-    const queryParams = {
-        'start_date': '2023-01-01',
-        'end_date': '2023-06-30',
-        'accounting_method': 'Accrual',
-        // Add more parameters as needed
-    };
+    // Use the query parameters from the request
+    const queryParams = req.query;
+
     const urlWithParams = `${finalUrl}?${new URLSearchParams(queryParams).toString()}`;
 
     try {
@@ -124,6 +120,7 @@ app.get('/getGeneralLedger', async (req, res) => {
         res.status(500).send(`Failed to get general ledger: ${e.message}`);
     }
 });
+
 
 
 app.listen(PORT, function(){
