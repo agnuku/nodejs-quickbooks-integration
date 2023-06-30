@@ -6,7 +6,6 @@ const csrf = require('csrf');
 const tokens = new csrf();
 const OAuthClient = require('intuit-oauth');
 const bodyParser = require('body-parser');
-const config = require('./config.json');  
 const logger = require('./logger');
 
 let app = express();
@@ -22,9 +21,14 @@ const redirectUri = process.env.NODE_ENV === 'production'
 
 logger.info(`Redirect Uri is set to: ${redirectUri}`);
 
+if (!process.env.CLIENT_ID || !process.env.CLIENT_SECRET || !process.env.SESSION_SECRET) {
+    logger.error('Missing essential configuration. Please check your .env file or environment variables.');
+    process.exit(1);
+}
+
 let oauthClient = new OAuthClient({
-    clientId: config.clientId,
-    clientSecret: config.clientSecret,
+    clientId: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
     environment: 'sandbox',
     redirectUri: redirectUri,
     logging: true,
@@ -33,7 +37,7 @@ let oauthClient = new OAuthClient({
 logger.info(`OAuth Client created. clientId: ${oauthClient.clientId}, environment: ${oauthClient.environment}`);
 
 app.use(session({
-    secret: config.sessionSecret,
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true,
 }));
@@ -45,6 +49,7 @@ app.use((req, res, next) => {
     req.oauthClient = oauthClient;
     next();
 });
+
 
 app.get('/connect', function(req, res) {
     logger.info('Connecting to the Auth server');
