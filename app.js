@@ -102,6 +102,30 @@ app.get('/getCompanyInfo', async (req, res) => {
     }
 });
 
+app.get('/getGeneralLedger', async (req, res) => {
+    const companyID = oauthClient.getToken().realmId;
+    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
+    const finalUrl = `${url}v3/company/${companyID}/reports/GeneralLedger`;
+
+    // Add your query parameters
+    const queryParams = {
+        'start_date': '2023-01-01',
+        'end_date': '2023-06-30',
+        'accounting_method': 'Accrual',
+        // Add more parameters as needed
+    };
+    const urlWithParams = `${finalUrl}?${new URLSearchParams(queryParams).toString()}`;
+
+    try {
+        const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
+        res.send(JSON.parse(authResponse.text()));
+    } catch(e) {
+        console.error("Error in /getGeneralLedger: ", e);
+        res.status(500).send(`Failed to get general ledger: ${e.message}`);
+    }
+});
+
+
 app.listen(PORT, function(){
     console.log(`Started on port ${PORT}`);
 });
