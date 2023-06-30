@@ -8,24 +8,20 @@ const OAuthClient = require('intuit-oauth');
 const bodyParser = require('body-parser');
 const config = require('./config.json');  
 const logger = require('./logger');
-// Add this line if you have 'tokens' module
 
 let app = express();
 
-// Get the port from environment or use 4000 as default
 const PORT = process.env.PORT || 4000;
 
 logger.debug('process.env.NODE_ENV: ' + process.env.NODE_ENV);
 logger.debug('process.env.PORT: ' + process.env.PORT);
 
-// Define redirectUri based on the environment
 const redirectUri = process.env.NODE_ENV === 'production' 
     ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
     : 'http://localhost:4000/callback';
 
 logger.debug('redirectUri: ' + redirectUri);
 
-// Instantiate new client
 let oauthClient = new OAuthClient({
     clientId: config.clientId,
     clientSecret: config.clientSecret,
@@ -34,7 +30,6 @@ let oauthClient = new OAuthClient({
     logging: true,
 });
 
-// Log only key properties of the oauthClient
 logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
 
 app.use(session({
@@ -46,14 +41,11 @@ app.use(session({
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
-// Set oauthClient in middleware so we can access it in routes
 app.use((req, res, next) => {
     req.oauthClient = oauthClient;
     logger.debug("OAuthClient added to request object with clientId: " + req.oauthClient.clientId);
     next();
 });
-
-let oauth2_token_json = null; // Add this line
 
 app.get('/connect', function(req, res) {
     logger.info('GET /connect route hit');
@@ -70,8 +62,8 @@ app.get('/connect', function(req, res) {
 app.get('/callback', async (req, res) => {
     try {
         const authResponse = await oauthClient.createToken(req.url);
-        oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
-        res.send(oauth2_token_json);
+        req.session.oauth2_token_json = authResponse.getJson();
+        res.send(JSON.stringify(req.session.oauth2_token_json, null, 2));
     } catch(e) {
         console.error("Error in /callback: ", e);
         res.status(500).send(`Failed to create token: ${e.message}`);
@@ -81,8 +73,8 @@ app.get('/callback', async (req, res) => {
 app.get('/refreshAccessToken', async (req, res) => {
     try {
         const authResponse = await oauthClient.refresh();
-        oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
-        res.send(oauth2_token_json);
+        req.session.oauth2_token_json = authResponse.getJson();
+        res.send(JSON.stringify(req.session.oauth2_token_json, null, 2));
     } catch(e) {
         console.error("Error in /refreshAccessToken: ", e);
         res.status(500).send(`Failed to refresh token: ${e.message}`);
@@ -90,6 +82,12 @@ app.get('/refreshAccessToken', async (req, res) => {
 });
 
 app.get('/getGeneralLedger', async (req, res) => {
+    if (!req.session.oauth2_token_json) {
+        return res.status(400).send('No OAuth token saved in the session');
+    }
+    
+    oauthClient.setToken(req.session.oauth2_token_json);
+
     const companyID = oauthClient.getToken().realmId;
 
     const startDate = '2022-01-01';
@@ -118,6 +116,12 @@ app.get('/getGeneralLedger', async (req, res) => {
 
 
 app.get('/getCompanyInfo', async (req, res) => {
+    if (!req.session.oauth2_token_json) {
+        return res.status(400).send('No OAuth token saved in the session');
+    }
+    
+    oauthClient.setToken(req.session.oauth2_token_json);
+
     const companyID = oauthClient.getToken().realmId;
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
     const finalUrl = `${url}v3/company/${companyID}/companyinfo/${companyID}`;
