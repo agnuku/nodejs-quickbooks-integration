@@ -154,4 +154,3 @@ app.get('/getGeneralLedger', [
 app.listen(PORT, function(){
     console.log(`Started on port ${PORT}`);
 });  
-
