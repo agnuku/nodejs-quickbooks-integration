@@ -13,7 +13,7 @@ const { check, validationResult } = require('express-validator');
 
 let app = express();
 
-// Get the port from environment or use 5000 as default
+// Get the port from environment or use 4000 as default
 const PORT = process.env.PORT || 5000;
 
 logger.debug('process.env.NODE_ENV: ' + process.env.NODE_ENV);
@@ -21,7 +21,7 @@ logger.debug('process.env.PORT: ' + process.env.PORT);
 
 // Define redirectUri based on the environment
 const redirectUri = process.env.NODE_ENV === 'production' 
-    ? config.redirectUri
+    ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
     : 'http://localhost:4000/callback';
 
 logger.debug('redirectUri: ' + redirectUri);
@@ -30,7 +30,7 @@ logger.debug('redirectUri: ' + redirectUri);
 let oauthClient = new OAuthClient({
     clientId: config.clientId,
     clientSecret: config.clientSecret,
-    environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
+    environment: 'sandbox',
     redirectUri: redirectUri,
     logging: true,
 });
@@ -122,7 +122,7 @@ app.get('/getGeneralLedger', [
     check('end_date').isDate(),
     check('accounting_method').isIn(['Cash', 'Accrual']),
     // Add more validations as needed...
-], async (req, res, next) => {
+], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ success: false, errors: errors.array() });
@@ -141,24 +141,16 @@ app.get('/getGeneralLedger', [
         const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
-        next(new CustomError({ message: `Failed to get general ledger: ${e.message}`, status: 500 }));
+        logger.error("Error in /getGeneralLedger: ", e);
+        res.status(500).json({
+            success: false,
+            message: `Failed to get general ledger: ${e.message}`,
+            stack: process.env.NODE_ENV === 'development' ? e.stack : undefined, // send stack trace only in development
+        });
     }
 });
 
-// Add error handling middleware
-app.use((err, req, res, next) => {
-    logger.error(err.message);
-    if (process.env.NODE_ENV !== 'production') {
-        logger.error(err.stack);
-    }
 
-    res.status(err.status || 500).send({
-        error: {
-            message: err.message,
-            status: err.status,
-        }
-    });
-});
 
 app.listen(PORT, function(){
     console.log(`Started on port ${PORT}`);
