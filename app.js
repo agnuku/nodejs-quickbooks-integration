@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
-const path = require('path');
 const OAuthClient = require('intuit-oauth');
 const bodyParser = require('body-parser');
 const config = require('./config.json');  
@@ -10,23 +9,19 @@ const csrf = require('csrf');
 const tokens = new csrf(); 
 const { check, validationResult } = require('express-validator');
 
-
 let app = express();
 
-// Get the port from environment or use 4000 as default
 const PORT = process.env.PORT || 4000;
 
 logger.debug('process.env.NODE_ENV: ' + process.env.NODE_ENV);
 logger.debug('process.env.PORT: ' + process.env.PORT);
 
-// Define redirectUri based on the environment
 const redirectUri = process.env.NODE_ENV === 'production' 
     ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
     : 'http://localhost:4000/callback';
 
 logger.debug('redirectUri: ' + redirectUri);
 
-// Instantiate new client
 let oauthClient = new OAuthClient({
     clientId: config.clientId,
     clientSecret: config.clientSecret,
@@ -35,7 +30,6 @@ let oauthClient = new OAuthClient({
     logging: true,
 });
 
-// Log only key properties of the oauthClient
 logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
 
 app.use(session({
@@ -47,14 +41,11 @@ app.use(session({
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
-// Set oauthClient in middleware so we can access it in routes
 app.use((req, res, next) => {
     req.oauthClient = oauthClient;
     logger.debug("OAuthClient added to request object with clientId: " + req.oauthClient.clientId);
     next();
 });
-
-let oauth2_token_json = null; // Add this line
 
 app.get('/connect', function(req, res) {
     logger.info('GET /connect route hit');
@@ -71,7 +62,7 @@ app.get('/connect', function(req, res) {
 app.get('/callback', async (req, res) => {
     try {
         const authResponse = await oauthClient.createToken(req.url);
-        req.session.oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2); // Store in session
+        req.session.oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2); 
         res.send(req.session.oauth2_token_json);
     } catch(e) {
         logger.error("Error in /callback: ", e);
@@ -83,29 +74,43 @@ app.get('/callback', async (req, res) => {
     }
 });
 
-
 app.get('/refreshAccessToken', async (req, res) => {
     try {
         const authResponse = await oauthClient.refresh();
-        oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
-        res.send(oauth2_token_json);
+        req.session.oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
+        res.send(req.session.oauth2_token_json);
     } catch(e) {
-        console.error("Error in /refreshAccessToken: ", e);
-        res.status(500).send(`Failed to refresh token: ${e.message}`);
+        logger.error("Error in /refreshAccessToken: ", e);
+        res.status(500).json({
+            success: false,
+            message: `Failed to refresh token: ${e.message}`,
+            stack: process.env.NODE_ENV === 'development' ? e.stack : undefined,
+        });
     }
 });
 
 app.get('/getCompanyInfo', async (req, res) => {
-    const companyID = oauthClient.getToken().realmId;
-    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
+    let client = new OAuthClient({
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        environment: 'sandbox',
+        redirectUri: redirectUri,
+    });
+    client.setToken(JSON.parse(req.session.oauth2_token_json));
+    const companyID = client.getToken().realmId;
+    const url = client.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
     const finalUrl = `${url}v3/company/${companyID}/companyinfo/${companyID}`;
 
     try {
-        const authResponse = await oauthClient.makeApiCall({ url: finalUrl });
+        const authResponse = await client.makeApiCall({ url: finalUrl });
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
-        console.error("Error in /getCompanyInfo: ", e);
-        res.status(500).send(`Failed to get company info: ${e.message}`);
+        logger.error("Error in /getCompanyInfo: ", e);
+        res.status(500).json({
+            success: false,
+            message: `Failed to get company info: ${e.message}`,
+            stack: process.env.NODE_ENV === 'development' ? e.stack : undefined,
+        });
     }
 });
 
@@ -113,36 +118,40 @@ app.get('/getGeneralLedger', [
     check('start_date').isDate(),
     check('end_date').isDate(),
     check('accounting_method').isIn(['Cash', 'Accrual']),
-    // Add more validations as needed...
 ], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const companyID = oauthClient.getToken().realmId;
-    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
+    let client = new OAuthClient({
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        environment: 'sandbox',
+        redirectUri: redirectUri,
+    });
+    client.setToken(JSON.parse(req.session.oauth2_token_json));
+    const companyID = client.getToken().realmId;
+    const url = client.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
     const finalUrl = `${url}v3/company/${companyID}/reports/GeneralLedger`;
 
-    // Use the query parameters from the request
     const queryParams = req.query;
-
     const urlWithParams = `${finalUrl}?${new URLSearchParams(queryParams).toString()}`;
 
     try {
-        const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
+        const authResponse = await client.makeApiCall({ url: urlWithParams });
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
         logger.error("Error in /getGeneralLedger: ", e);
         res.status(500).json({
             success: false,
             message: `Failed to get general ledger: ${e.message}`,
-            stack: process.env.NODE_ENV === 'development' ? e.stack : undefined, // send stack trace only in development
+            stack: process.env.NODE_ENV === 'development' ? e.stack : undefined,
         });
     }
 });
 
-
 app.listen(PORT, function(){
     console.log(`Started on port ${PORT}`);
-});
+});  
+
