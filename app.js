@@ -3,7 +3,7 @@ const session = require('express-session');
 const bodyParser = require('body-parser');
 const { OAuthClient } = require('intuit-oauth');
 const indexRouter = require('./routes/index');
-const config = require('./config.json');  // import the config.json file
+const config = require('./config.json');  
 const logger = require('./logger');
 
 let app = express();

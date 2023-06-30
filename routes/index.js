@@ -2,30 +2,13 @@ const express = require('express');
 const router = express.Router();
 const csrf = require('csrf');
 const tokens = new csrf();
-const logger = require('../logger'); // import the logger
-const session = require('express-session');
-const { OAuthClient } = require('intuit-oauth');
+const logger = require('../logger');
 
-const app = express();
-
-app.use(session({
-    secret: 'YourSecretKey', // replace with your secret key
-    resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false } // Note: use 'secure: true' for https connections
-}));
-
-const oauthClient = new OAuthClient({
-    clientId: 'YourClientId',
-    clientSecret: 'YourClientSecret',
-    environment: 'sandbox', // or 'production',
-    redirectUri: 'http://localhost:3000/callback'
-});
-
-app.use((req, res, next) => {
-    req.oauthClient = oauthClient;
-    next();
-});
+function calculateStartDate() {
+    let date = new Date();
+    date.setFullYear(date.getFullYear() - 1);
+    return date;
+}
 
 router.get('/generalledger', function(req, res) {
     logger.info('GET /generalledger route hit');
@@ -144,8 +127,4 @@ router.get('/callback', function(req, res) {
         });
 });
 
-app.use('/', router);
-
-app.listen(3000, function() {
-    console.log('Example app listening on port 3000!');
-});
+module.exports = router;
