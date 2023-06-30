@@ -90,7 +90,7 @@ app.get('/getCompanyInfo', async (req, res) => {
 
     const companyID = oauthClient.getToken().realmId;
     const url = oauthClient.environment == 'sandbox' ? 'https://sandbox-quickbooks.api.intuit.com/' : 'https://quickbooks.api.intuit.com/';
-    const finalUrl = `${url}v3/company/${companyID}/companyinfo/${companyID}`;
+    const finalUrl = `${url}v3/company/${companyID}/companyinfo`;
 
     try {
         const authResponse = await oauthClient.makeApiCall({ url: finalUrl });
