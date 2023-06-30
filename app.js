@@ -116,8 +116,12 @@ app.get('/getGeneralLedger', async (req, res) => {
         const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
-        console.error("Error in /getGeneralLedger: ", e);
-        res.status(500).send(`Failed to get general ledger: ${e.message}`);
+        logger.error("Error in /getGeneralLedger: ", e);
+        res.status(500).json({
+            success: false,
+            message: `Failed to get general ledger: ${e.message}`,
+            stack: e.stack // send stack trace only in development
+        });
     }
 });
 
