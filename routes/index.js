@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const csrf = require('csrf');
 const tokens = new csrf();
-const logger = require('../logger');
+const logger = require('../logger'); // import the logger
+
+const { OAuthClient } = require('intuit-oauth');
 
 function calculateStartDate() {
     let date = new Date();
@@ -12,14 +14,16 @@ function calculateStartDate() {
 
 router.get('/generalledger', function(req, res) {
     logger.info('GET /generalledger route hit');
-    if(!req.session || !req.session.authResponse || !req.oauthClient) {
+    if(!req.session || !req.session.authResponse) {
         logger.warn('Session or auth response not available');
         return res.json({ error: 'Session or auth response not available' });
     }
     const oauthClient = req.oauthClient;
     const companyID = req.session.authResponse.realmId;
+    
     const startDate = '2022-01-01';
     const endDate = '2022-12-31';
+
     const url = `${oauthClient.environment == 'sandbox' ? 'https://sandbox-quickbooks.api.intuit.com' : 'https://quickbooks.api.intuit.com'}/v3/company/${companyID}/reports/GeneralLedger`;
     
     const queryParameters = {
@@ -52,7 +56,7 @@ router.get('/generalledger', function(req, res) {
 
 router.get('/companyinfo', function(req, res) {
     logger.info('GET /companyinfo route hit');
-    if(!req.session || !req.session.authResponse || !req.oauthClient) {
+    if(!req.session || !req.session.authResponse) {
         logger.warn('Session or auth response not available');
         return res.json({ error: 'Session or auth response not available' });
     }
@@ -80,6 +84,7 @@ router.get('/companyinfo', function(req, res) {
         res.status(500).json({ error: 'Error during company info retrieval' });
     });
 });
+
 
 router.get('/', function(req, res) {
     logger.info('GET / route hit');
@@ -111,7 +116,7 @@ router.get('/callback', function(req, res) {
     req.oauthClient.createToken(parseRedirect)
         .then(function(authResponse) {
             logger.debug('Token creation successful, saving session...');
-            req.session.authResponse = authResponse.getJson();
+            req.session.authResponse = authResponse.getJson(); // Corrected line
             req.session.save(function(err) {
                 if(err) {
                     logger.error("Error occurred while saving session: " + err.message);
