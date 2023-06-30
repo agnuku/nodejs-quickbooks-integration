@@ -21,15 +21,15 @@ logger.debug('process.env.PORT: ' + process.env.PORT);
 
 // Define redirectUri based on the environment
 const redirectUri = process.env.NODE_ENV === 'production' 
-    ? process.env.REDIRECT_URL_PROD
-    : process.env.REDIRECT_URL_DEV;
+    ? config.redirectUri
+    : 'http://localhost:4000/callback';
 
 logger.debug('redirectUri: ' + redirectUri);
 
 // Instantiate new client
 let oauthClient = new OAuthClient({
-    clientId: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
+    clientId: config.clientId,
+    clientSecret: config.clientSecret,
     environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
     redirectUri: redirectUri,
     logging: true,
@@ -47,7 +47,7 @@ class CustomError extends Error {
 }
 
 app.use(session({
-    secret: process.env.SESSION_SECRET,
+    secret: config.sessionSecret,
     resave: false,
     saveUninitialized: true,
 }));
