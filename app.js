@@ -1,38 +1,70 @@
 require('dotenv').config();
-
 const express = require('express');
+const session = require('express-session');
 const path = require('path');
+const csrf = require('csrf');
+const tokens = new csrf();
 const OAuthClient = require('intuit-oauth');
 const bodyParser = require('body-parser');
+const config = require('./config.json');  
+const logger = require('./logger');
+// Add this line if you have 'tokens' module
 
-const app = express();
+let app = express();
 
 // Get the port from environment or use 4000 as default
 const PORT = process.env.PORT || 4000;
 
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, '/public')));
-app.engine('html', require('ejs').renderFile);
-app.set('view engine', 'html');
-app.use(bodyParser.json())
+logger.debug('process.env.NODE_ENV: ' + process.env.NODE_ENV);
+logger.debug('process.env.PORT: ' + process.env.PORT);
 
-let oauth2_token_json = null;
-let oauthClient = null;
+// Define redirectUri based on the environment
+const redirectUri = process.env.NODE_ENV === 'production' 
+    ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
+    : 'http://localhost:4000/callback';
 
-app.get('/', (req, res) => {
-    res.render('index');
+logger.debug('redirectUri: ' + redirectUri);
+
+// Instantiate new client
+let oauthClient = new OAuthClient({
+    clientId: config.clientId,
+    clientSecret: config.clientSecret,
+    environment: 'sandbox',
+    redirectUri: redirectUri,
+    logging: true,
 });
 
-app.get('/authUri', bodyParser.urlencoded({ extended: false }), (req, res) => {
-    oauthClient = new OAuthClient({
-        clientId: process.env.CLIENT_ID,
-        clientSecret: process.env.CLIENT_SECRET,
-        environment: process.env.ENVIRONMENT,
-        redirectUri: process.env.REDIRECT_URI
-    });
+// Log only key properties of the oauthClient
+logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
 
-    const authUri = oauthClient.authorizeUri({ scope: [OAuthClient.scopes.Accounting], state: 'intuit-test' });
-    res.send(authUri);
+app.use(session({
+    secret: config.sessionSecret,
+    resave: false,
+    saveUninitialized: true,
+}));
+
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+
+// Set oauthClient in middleware so we can access it in routes
+app.use((req, res, next) => {
+    req.oauthClient = oauthClient;
+    logger.debug("OAuthClient added to request object with clientId: " + req.oauthClient.clientId);
+    next();
+});
+
+let oauth2_token_json = null; // Add this line
+
+app.get('/connect', function(req, res) {
+    logger.info('GET /connect route hit');
+    logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
+    
+    const authUri = req.oauthClient.authorizeUri({
+        scope: ['com.intuit.quickbooks.accounting'],
+        state: tokens.create(req.sessionID),
+    });
+    logger.info('Redirecting to: ' + authUri);
+    res.redirect(authUri);
 });
 
 app.get('/callback', async (req, res) => {
@@ -41,13 +73,9 @@ app.get('/callback', async (req, res) => {
         oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
         res.send(oauth2_token_json);
     } catch(e) {
-        console.error(e);
-        res.status(500).send('Failed to create token');
+        console.error("Error in /callback: ", e);
+        res.status(500).send(`Failed to create token: ${e.message}`);
     }
-});
-
-app.get('/retrieveToken', (req, res) => {
-    res.send(oauth2_token_json);
 });
 
 app.get('/refreshAccessToken', async (req, res) => {
@@ -56,8 +84,8 @@ app.get('/refreshAccessToken', async (req, res) => {
         oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
         res.send(oauth2_token_json);
     } catch(e) {
-        console.error(e);
-        res.status(500).send('Failed to refresh token');
+        console.error("Error in /refreshAccessToken: ", e);
+        res.status(500).send(`Failed to refresh token: ${e.message}`);
     }
 });
 
@@ -70,12 +98,11 @@ app.get('/getCompanyInfo', async (req, res) => {
         const authResponse = await oauthClient.makeApiCall({ url: finalUrl });
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
-        console.error(e);
-        res.status(500).send('Failed to get company info');
+        console.error("Error in /getCompanyInfo: ", e);
+        res.status(500).send(`Failed to get company info: ${e.message}`);
     }
 });
 
 app.listen(PORT, function(){
     console.log(`Started on port ${PORT}`);
 });
-
