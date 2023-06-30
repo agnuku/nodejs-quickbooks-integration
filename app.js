@@ -50,27 +50,45 @@ app.use((req, res, next) => {
     next();
 });
 
-
 app.get('/connect', function(req, res) {
-    logger.info('Connecting to the Auth server');
+    logger.info('GET /connect route hit');
+    logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
+    
     const authUri = req.oauthClient.authorizeUri({
         scope: ['com.intuit.quickbooks.accounting'],
         state: tokens.create(req.sessionID),
     });
-    logger.info(`Redirecting to: ${authUri}`);
+    logger.info('Redirecting to: ' + authUri);
     res.redirect(authUri);
 });
 
-app.get('/callback', async (req, res) => {
-    try {
-        const authResponse = await req.oauthClient.createToken(req.url);
-        req.session.oauth2_token_json = authResponse.getJson();
-        logger.info(`New token received and stored: ${JSON.stringify(req.session.oauth2_token_json)}`);
-        res.send(JSON.stringify(req.session.oauth2_token_json, null, 2));
-    } catch(e) {
-        logger.error(`Error occurred in callback: ${e}`);
-        res.status(500).send(`Failed to create token: ${e.message}`);
+app.get('/callback', function(req, res) {
+    logger.info('GET /callback route hit');
+    const parseRedirect = req.protocol + '://' + req.get('host') + req.originalUrl;
+
+    if (!tokens.verify(req.sessionID, req.query.state)) {
+        logger.warn('Invalid state, sending error response');
+        return res.json({error: 'Invalid state'});
     }
+
+    logger.info('Creating OAuth token...');
+    req.oauthClient.createToken(parseRedirect)
+        .then(function(authResponse) {
+            logger.debug('Token creation successful, saving session...');
+            req.session.authResponse = authResponse.getJson(); // Corrected line
+            req.session.save(function(err) {
+                if(err) {
+                    logger.error("Error occurred while saving session: " + err.message);
+                    return res.status(500).json({ error: 'Error during session saving' });
+                }
+                logger.info('Session saved successfully, redirecting to /');
+                res.redirect('/');
+            });
+        })
+        .catch(function(e) {
+            logger.error("Error occurred while creating token: " + e.message);
+            res.status(500).json({ error: 'Error during token creation' });
+        });
 });
 
 app.get('/refreshAccessToken', async (req, res) => {
