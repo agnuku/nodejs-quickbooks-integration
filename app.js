@@ -13,14 +13,14 @@ let app = express();
 
 const PORT = process.env.PORT || 4000;
 
-logger.debug('process.env.NODE_ENV: ' + process.env.NODE_ENV);
-logger.debug('process.env.PORT: ' + process.env.PORT);
+logger.info(`NODE_ENV: ${process.env.NODE_ENV}`);
+logger.info(`PORT: ${process.env.PORT}`);
 
 const redirectUri = process.env.NODE_ENV === 'production' 
     ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
     : 'http://localhost:4000/callback';
 
-logger.debug('redirectUri: ' + redirectUri);
+logger.info(`Redirect Uri is set to: ${redirectUri}`);
 
 let oauthClient = new OAuthClient({
     clientId: config.clientId,
@@ -30,7 +30,7 @@ let oauthClient = new OAuthClient({
     logging: true,
 });
 
-logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
+logger.info(`OAuth Client created. clientId: ${oauthClient.clientId}, environment: ${oauthClient.environment}`);
 
 app.use(session({
     secret: config.sessionSecret,
@@ -43,40 +43,39 @@ app.use(bodyParser.json());
 
 app.use((req, res, next) => {
     req.oauthClient = oauthClient;
-    logger.debug("OAuthClient added to request object with clientId: " + req.oauthClient.clientId);
     next();
 });
 
 app.get('/connect', function(req, res) {
-    logger.info('GET /connect route hit');
-    logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
-    
+    logger.info('Connecting to the Auth server');
     const authUri = req.oauthClient.authorizeUri({
         scope: ['com.intuit.quickbooks.accounting'],
         state: tokens.create(req.sessionID),
     });
-    logger.info('Redirecting to: ' + authUri);
+    logger.info(`Redirecting to: ${authUri}`);
     res.redirect(authUri);
 });
 
 app.get('/callback', async (req, res) => {
     try {
-        const authResponse = await oauthClient.createToken(req.url);
+        const authResponse = await req.oauthClient.createToken(req.url);
         req.session.oauth2_token_json = authResponse.getJson();
+        logger.info(`New token received and stored: ${JSON.stringify(req.session.oauth2_token_json)}`);
         res.send(JSON.stringify(req.session.oauth2_token_json, null, 2));
     } catch(e) {
-        console.error("Error in /callback: ", e);
+        logger.error(`Error occurred in callback: ${e}`);
         res.status(500).send(`Failed to create token: ${e.message}`);
     }
 });
 
 app.get('/refreshAccessToken', async (req, res) => {
     try {
-        const authResponse = await oauthClient.refresh();
+        const authResponse = await req.oauthClient.refresh();
         req.session.oauth2_token_json = authResponse.getJson();
+        logger.info(`Token refreshed and stored: ${JSON.stringify(req.session.oauth2_token_json)}`);
         res.send(JSON.stringify(req.session.oauth2_token_json, null, 2));
     } catch(e) {
-        console.error("Error in /refreshAccessToken: ", e);
+        logger.error(`Error occurred in refreshAccessToken: ${e}`);
         res.status(500).send(`Failed to refresh token: ${e.message}`);
     }
 });
@@ -87,19 +86,20 @@ app.get('/getCompanyInfo', async function(req, res){
             return res.status(400).send('No OAuth token saved in the session');
         }
 
-        oauthClient.setToken(req.session.oauth2_token_json);
-        
-        const companyID = oauthClient.getToken().realmId;
-        const url = oauthClient.environment == 'sandbox' 
+        req.oauthClient.setToken(req.session.oauth2_token_json);
+        const companyID = req.oauthClient.getToken().realmId;
+        const url = req.oauthClient.environment == 'sandbox' 
             ? `https://sandbox-quickbooks.api.intuit.com/v3/company/${companyID}/companyinfo/${companyID}`
             : `https://quickbooks.api.intuit.com/v3/company/${companyID}/companyinfo/${companyID}`;
 
-        const authResponse = await oauthClient.makeApiCall({url: url});
+        logger.info(`Requesting CompanyInfo from URL: ${url}`);
+        
+        const authResponse = await req.oauthClient.makeApiCall({url: url});
 
-        console.log("The response for API call is :"+JSON.stringify(authResponse));
+        logger.info(`CompanyInfo Response: ${JSON.stringify(authResponse)}`);
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
-        console.error(e);
+        logger.error(`Error occurred in getCompanyInfo: ${e}`);
         res.status(500).send(e.toString());
     }
 });
@@ -111,12 +111,11 @@ app.get('/getGeneralLedger', async (req, res) => {
             return res.status(400).send('No OAuth token saved in the session');
         }
 
-        oauthClient.setToken(req.session.oauth2_token_json);
-
-        const companyID = oauthClient.getToken().realmId;
+        req.oauthClient.setToken(req.session.oauth2_token_json);
+        const companyID = req.oauthClient.getToken().realmId;
         const startDate = '2022-06-29';
         const endDate = '2023-06-29';
-        const url = oauthClient.environment == 'sandbox' 
+        const url = req.oauthClient.environment == 'sandbox' 
             ? `https://sandbox-quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger`
             : `https://quickbooks.api.intuit.com/v3/company/${companyID}/reports/GeneralLedger`;
 
@@ -126,16 +125,17 @@ app.get('/getGeneralLedger', async (req, res) => {
             columns: 'account_name,subt_nat_amount',
         };
 
-        const authResponse = await oauthClient.makeApiCall({ url: url, method: 'GET', params: queryParameters });
+        logger.info(`Requesting GeneralLedger from URL: ${url} with parameters: ${JSON.stringify(queryParameters)}`);
+
+        const authResponse = await req.oauthClient.makeApiCall({ url: url, method: 'GET', params: queryParameters });
+        logger.info(`GeneralLedger Response: ${JSON.stringify(authResponse)}`);
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
-        console.error("Error in /getGeneralLedger: ", e);
+        logger.error(`Error occurred in getGeneralLedger: ${e}`);
         res.status(500).send(`Failed to get general ledger data: ${e.message}`);
     }
 });
 
-    
-
 app.listen(PORT, function(){
-    console.log(`Started on port ${PORT}`);
+    logger.info(`Server started on port ${PORT}`);
 });
