@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
+const RedisStore = require('connect-redis').default;  // Import the connect-redis library
+const redis = require('redis');  // Import the redis library
 const path = require('path');
 const OAuthClient = require('intuit-oauth');
 const bodyParser = require('body-parser');
@@ -9,6 +11,17 @@ const logger = require('./logger');
 const csrf = require('csrf');
 const tokens = new csrf(); 
 const { check, validationResult } = require('express-validator');
+
+// Initialize the Redis client
+const client = redis.createClient({
+    password: config.redisPassword,
+    host: 'redis-17187.c92.us-east-1-3.ec2.cloud.redislabs.com',
+    port: 17187
+});
+
+client.on('error', (err) => {
+    console.log('Redis error: ', err);
+});
 
 
 let app = express();
@@ -47,6 +60,7 @@ class CustomError extends Error {
 }
 
 app.use(session({
+    store: new RedisStore({ client: client, prefix: 'myapp:' }),
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: true,

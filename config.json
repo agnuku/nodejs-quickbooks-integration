@@ -2,5 +2,6 @@
   "clientId": "AB5Q919svpXp8BqGwzfdBYPXC2DGD6JhdA8J5HGHlktwRubVsc",
   "clientSecret": "lddku6jhiEaH3aeluzJr5xLNYvizqAJepCtxCu2z",
   "redirectUri": "https://quickbookks-f425c88c6f16.herokuapp.com/callback",
-  "sessionSecret": "SECRETSANTAK"
+  "sessionSecret": "SECRETSANTAK",
+  "redisPassword": "JME1T2W9hOj7A2vwzuAzLSeh2AgM5lAa"
 }
