@@ -147,17 +147,77 @@ app.get('/callback', async (req, res, next) => {
     }
 });
 
-
-app.get('/refreshAccessToken', async (req, res, next) => {
+app.post('/storeToken', async (req, res, next) => {
     try {
-        const authResponse = await oauthClient.refresh();
-        oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
-        res.send(oauth2_token_json);
+        const { access_token, refresh_token, expires_in } = req.body;
+
+        // Validation of input data
+        if(!access_token || !refresh_token || !expires_in){
+            throw new Error("Missing required field(s)");
+        }
+
+        const expiryTime = parseInt(expires_in); // make sure expires_in is a number
+
+        if(isNaN(expiryTime)){
+            throw new Error("expires_in must be a number");
+        }
+
+        // Save tokens in Redis
+        const access_token_res = await client.set('access_token', access_token, 'EX', expiryTime);
+        const refresh_token_res = await client.set('refresh_token', refresh_token);
+
+        // Check if the tokens were stored correctly
+        if (access_token_res !== 'OK' || refresh_token_res !== 'OK') {
+            throw new Error("Failed to store tokens in Redis");
+        }
+
+        res.sendStatus(200);
     } catch (e) {
-        logger.error("Error in /refreshAccessToken: ", e);
+        logger.error("Error in /storeToken: ", e);
+        next(new CustomError({ message: `Failed to store token: ${e.message}`, status: 500 }));
+    }
+});
+
+// Route for token refresh
+app.get('/refreshToken', async (req, res, next) => {
+    try {
+        const refresh_token = await client.get('refresh_token');
+
+        if(!refresh_token){
+            throw new Error("No refresh token available");
+        }
+
+        // Call the method for refreshing tokens
+        const authResponse = await oauthClient.refreshUsingToken(refresh_token);
+
+        const { access_token, expires_in } = authResponse.getJson();
+
+        // Save the new access token in Redis
+        const access_token_res = await client.set('access_token', access_token, 'EX', expires_in);
+
+        if (access_token_res !== 'OK') {
+            throw new Error("Failed to store new access token in Redis");
+        }
+
+        res.sendStatus(200);
+    } catch (e) {
+        logger.error("Error in /refreshToken: ", e);
         next(new CustomError({ message: `Failed to refresh token: ${e.message}`, status: 500 }));
     }
 });
+
+
+
+// app.get('/refreshAccessToken', async (req, res, next) => {
+//     try {
+//         const authResponse = await oauthClient.refresh();
+//         oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
+//         res.send(oauth2_token_json);
+//     } catch (e) {
+//         logger.error("Error in /refreshAccessToken: ", e);
+//         next(new CustomError({ message: `Failed to refresh token: ${e.message}`, status: 500 }));
+//     }
+// });
 
 app.get('/getCompanyInfo', async (req, res, next) => {
     const companyID = oauthClient.getToken().realmId;
