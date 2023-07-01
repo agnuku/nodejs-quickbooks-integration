@@ -14,15 +14,28 @@ const { check, validationResult } = require('express-validator');
 
 let client;
 
-//initialize Redis store
 client = redis.createClient({
-    password: config.redisPassword,
-    host: 'redis-17187.c92.us-east-1-3.ec2.cloud.redislabs.com',
-    port: 17187
-});
+    REDISCLOUD_URL: process.env.REDISCLOUD_URL
+   });
 
 client.on('connect', function() {
     console.log('Redis client connected');
+});
+
+client.on('ready', function() {
+    console.log('Redis client is ready');
+});
+
+client.on('reconnecting', function() {
+    console.log('Redis client reconnecting');
+});
+
+client.on('end', function() {
+    console.log('Redis client connection ended');
+});
+
+client.on('error', function (err) {
+    console.log('Something went wrong with Redis client ' + err);
 });
 
 client.on('error', function (err) {
