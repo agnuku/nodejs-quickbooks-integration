@@ -138,13 +138,15 @@ app.get('/connect', function (req, res) {
 app.get('/callback', async (req, res, next) => {
     try {
         const authResponse = await oauthClient.createToken(req.url);
-        req.session.oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
+        const { access_token, refresh_token, expires_in } = authResponse.getJson();
+        req.session.oauth2_token_json = { access_token, refresh_token, expires_in };
         res.send(req.session.oauth2_token_json);
     } catch (e) {
         logger.error("Error in /callback: ", e);
         next(new CustomError({ message: `Failed to create token: ${e.message}`, status: 500 }));
     }
 });
+
 
 app.get('/refreshAccessToken', async (req, res, next) => {
     try {
