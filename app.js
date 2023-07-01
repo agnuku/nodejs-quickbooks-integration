@@ -181,6 +181,11 @@ app.get('/getGeneralLedger', [
     }
 });
 
+//Root route
+app.get('/', (req, res) => {
+    res.send('Welcome to Quickbookks!');
+});
+
 // Add error handling middleware
 app.use((err, req, res, next) => {
     logger.error(err.message);
