@@ -22,30 +22,34 @@ client = redis.createClient({
     }
 });
 
-client.on('connect', function() {
+client.connect().then(() => {
     console.log('Redis client connected');
-});
+    client.on('connect', function() {
+        console.log('Redis client connected');
+    });
 
-client.on('ready', function() {
-    console.log('Redis client is ready');
-});
+    client.on('ready', function() {
+        console.log('Redis client is ready');
+    });
 
-client.on('reconnecting', function() {
-    console.log('Redis client reconnecting');
-});
+    client.on('reconnecting', function() {
+        console.log('Redis client reconnecting');
+    });
 
-client.on('end', function() {
-    console.log('Redis client connection ended');
-});
+    client.on('end', function() {
+        console.log('Redis client connection ended');
+    });
 
-client.on('error', function (err) {
-    console.log('Something went wrong with Redis client ' + err);
-});
+    client.on('error', function (err) {
+        console.log('Something went wrong with Redis client ' + err);
+    });
 
-client.on('error', function (err) {
-    console.log('Something went wrong ' + err);
+    client.on('error', function (err) {
+        console.log('Something went wrong ' + err);
+    });
+}).catch((err) => {
+    console.error("Error connecting to redis", err);
 });
-
 let app = express();
 
 // Get the port from environment or use 4000 as default
