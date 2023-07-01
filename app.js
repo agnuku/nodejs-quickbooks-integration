@@ -131,7 +131,7 @@ app.get('/callback', async (req, res, next) => {
         req.session.oauth2_token_json = { access_token, refresh_token, expires_in };
         //res.send(req.session.oauth2_token_json); old code
 
-        res.redirect(`http://localhost:8080/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`); //put this "localhost ---- URL " in environment variables
+        res.redirect(`https://6b0c-73-68-198-127.ngrok-free.app/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`); //put this "localhost ---- URL " in environment variables
 
     } catch (e) {
         logger.error("Error in /callback: ", e);
