@@ -15,8 +15,12 @@ const { check, validationResult } = require('express-validator');
 let client;
 
 client = redis.createClient({
-    REDISCLOUD_URL: process.env.REDISCLOUD_URL
-   });
+    password: 'JME1T2W9hOj7A2vwzuAzLSeh2AgM5lAa',
+    socket: {
+        host: 'redis-17187.c92.us-east-1-3.ec2.cloud.redislabs.com',
+        port: 17187
+    }
+});
 
 client.on('connect', function() {
     console.log('Redis client connected');
