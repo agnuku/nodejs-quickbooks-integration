@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const session = require('express-session');
 const RedisStore = require('connect-redis').default;
 const redis = require('redis');
@@ -50,6 +51,7 @@ client.connect().then(() => {
 });
 
 let app = express();
+app.use(cors());
 
 const PORT = process.env.PORT || 5000;
 
