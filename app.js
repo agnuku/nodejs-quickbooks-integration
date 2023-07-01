@@ -136,6 +136,16 @@ app.get('/connect', function (req, res) {
 });
 
 app.get('/callback', async (req, res, next) => {
+    // Ensure state parameter is present
+    if (!req.query.state) {
+        return next(new CustomError({ message: `Missing state parameter`, status: 400 }));
+    }
+
+    // Validate CSRF token
+    if (!tokens.verify(req.sessionID, req.query.state)) {
+        return next(new CustomError({ message: `Invalid CSRF token`, status: 400 }));
+    }
+
     try {
         const authResponse = await oauthClient.createToken(req.url);
         const { access_token, refresh_token, expires_in } = authResponse.getJson();
@@ -146,6 +156,7 @@ app.get('/callback', async (req, res, next) => {
         next(new CustomError({ message: `Failed to create token: ${e.message}`, status: 500 }));
     }
 });
+
 
 app.post('/storeToken', async (req, res, next) => {
     try {
