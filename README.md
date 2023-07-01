@@ -64,4 +64,4 @@ This QuickBooks Node.js OAuth2 Integration App is a simple application to demons
 
 General Ledger query
 Using parameters
-/getGeneralLedger?start_date=2023-01-01&end_date=2023-06-30&accounting_method=Accrual
+/getGeneralLedger?start_date=2023-07-01&end_date=2023-12-31&accounting_method=Accrual

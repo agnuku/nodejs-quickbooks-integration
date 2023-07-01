@@ -24,29 +24,29 @@ client = redis.createClient({
 });
 
 client.connect().then(() => {
-    console.log('Redis client connected');
+    logger.info('Redis client connected');
     client.on('connect', function () {
-        console.log('Redis client connected');
+        logger.info('Redis client connected');
     });
 
     client.on('ready', function () {
-        console.log('Redis client is ready');
+        logger.info('Redis client is ready');
     });
 
     client.on('reconnecting', function () {
-        console.log('Redis client reconnecting');
+        logger.info('Redis client reconnecting');
     });
 
     client.on('end', function () {
-        console.log('Redis client connection ended');
+        logger.info('Redis client connection ended');
     });
 
     client.on('error', function (err) {
-        console.log('Something went wrong with Redis client ' + err);
+        logger.error('Something went wrong with Redis client ' + err);
     });
 
 }).catch((err) => {
-    console.error("Error connecting to redis", err);
+    logger.error("Error connecting to redis", err);
 });
 
 let app = express();
@@ -55,6 +55,9 @@ const PORT = process.env.PORT || 5000;
 
 logger.debug('process.env.NODE_ENV: ' + process.env.NODE_ENV);
 logger.debug('process.env.PORT: ' + process.env.PORT);
+
+// Use morgan for request logging and make it use the winston logger
+app.use(logger.morgan('combined', { stream: logger.stream }));
 
 const redirectUri = process.env.NODE_ENV === 'production'
     ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
@@ -94,6 +97,27 @@ app.use((req, res, next) => {
     logger.debug("OAuthClient added to request object with clientId: " + req.oauthClient.clientId);
     next();
 });
+
+app.use((err, req, res, next) => {
+    if (res.headersSent) {
+        return next(err);
+    }
+
+    const status = err.status || 500;
+
+    logger.error(`${status} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
+
+    res.status(status);
+    if (process.env.NODE_ENV === 'development') {
+        res.json({ status: status, message: err.message, stack: err.stack });
+    } else {
+        res.json({ status: status, message: 'Internal Server Error' });
+    }
+});
+
+if (process.env.NODE_ENV === 'development') {
+    app.use(require('errorhandler')())
+}
 
 let oauth2_token_json = null;
 
@@ -196,5 +220,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, function () {
-    console.log(`Started on port ${PORT}`);
+    logger.info(`Started on port ${PORT}`);
 });
