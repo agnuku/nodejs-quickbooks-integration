@@ -1,15 +1,15 @@
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;  // Import the connect-redis library
-const redis = require('redis');  // Import the redis library
+const RedisStore = require('connect-redis').default;
+const redis = require('redis');
 const path = require('path');
 const OAuthClient = require('intuit-oauth');
 const bodyParser = require('body-parser');
-const config = require('./config.json');  
+const config = require('./config.json');
 const logger = require('./logger');
 const csrf = require('csrf');
-const tokens = new csrf(); 
+const tokens = new csrf();
 const { check, validationResult } = require('express-validator');
 
 let client;
@@ -24,19 +24,19 @@ client = redis.createClient({
 
 client.connect().then(() => {
     console.log('Redis client connected');
-    client.on('connect', function() {
+    client.on('connect', function () {
         console.log('Redis client connected');
     });
 
-    client.on('ready', function() {
+    client.on('ready', function () {
         console.log('Redis client is ready');
     });
 
-    client.on('reconnecting', function() {
+    client.on('reconnecting', function () {
         console.log('Redis client reconnecting');
     });
 
-    client.on('end', function() {
+    client.on('end', function () {
         console.log('Redis client connection ended');
     });
 
@@ -44,28 +44,23 @@ client.connect().then(() => {
         console.log('Something went wrong with Redis client ' + err);
     });
 
-    client.on('error', function (err) {
-        console.log('Something went wrong ' + err);
-    });
 }).catch((err) => {
     console.error("Error connecting to redis", err);
 });
+
 let app = express();
 
-// Get the port from environment or use 4000 as default
 const PORT = process.env.PORT || 5000;
 
 logger.debug('process.env.NODE_ENV: ' + process.env.NODE_ENV);
 logger.debug('process.env.PORT: ' + process.env.PORT);
 
-// Define redirectUri based on the environment
-const redirectUri = process.env.NODE_ENV === 'production' 
+const redirectUri = process.env.NODE_ENV === 'production'
     ? 'https://quickbookks-f425c88c6f16.herokuapp.com/callback'
     : 'http://localhost:4000/callback';
 
 logger.debug('redirectUri: ' + redirectUri);
 
-// Instantiate new client
 let oauthClient = new OAuthClient({
     clientId: config.clientId,
     clientSecret: config.clientSecret,
@@ -74,10 +69,8 @@ let oauthClient = new OAuthClient({
     logging: true,
 });
 
-// Log only key properties of the oauthClient
 logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
 
-//This custom class will allow us to throw specific errors with context
 class CustomError extends Error {
     constructor({ message, status }) {
         super(message);
@@ -95,19 +88,18 @@ app.use(session({
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
-// Set oauthClient in middleware so we can access it in routes
 app.use((req, res, next) => {
     req.oauthClient = oauthClient;
     logger.debug("OAuthClient added to request object with clientId: " + req.oauthClient.clientId);
     next();
 });
 
-let oauth2_token_json = null; // Add this line
+let oauth2_token_json = null;
 
-app.get('/connect', function(req, res) {
+app.get('/connect', function (req, res) {
     logger.info('GET /connect route hit');
     logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
-    
+
     const authUri = req.oauthClient.authorizeUri({
         scope: ['com.intuit.quickbooks.accounting'],
         state: tokens.create(req.sessionID),
@@ -116,34 +108,29 @@ app.get('/connect', function(req, res) {
     res.redirect(authUri);
 });
 
-app.get('/callback', async (req, res) => {
+app.get('/callback', async (req, res, next) => {
     try {
         const authResponse = await oauthClient.createToken(req.url);
-        req.session.oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2); // Store in session
+        req.session.oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
         res.send(req.session.oauth2_token_json);
-    } catch(e) {
+    } catch (e) {
         logger.error("Error in /callback: ", e);
-        res.status(500).json({
-            success: false,
-            message: `Failed to create token: ${e.message}`,
-            stack: process.env.NODE_ENV === 'development' ? e.stack : undefined,
-        });
+        next(new CustomError({ message: `Failed to create token: ${e.message}`, status: 500 }));
     }
 });
 
-
-app.get('/refreshAccessToken', async (req, res) => {
+app.get('/refreshAccessToken', async (req, res, next) => {
     try {
         const authResponse = await oauthClient.refresh();
         oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
         res.send(oauth2_token_json);
-    } catch(e) {
-        console.error("Error in /refreshAccessToken: ", e);
-        res.status(500).send(`Failed to refresh token: ${e.message}`);
+    } catch (e) {
+        logger.error("Error in /refreshAccessToken: ", e);
+        next(new CustomError({ message: `Failed to refresh token: ${e.message}`, status: 500 }));
     }
 });
 
-app.get('/getCompanyInfo', async (req, res) => {
+app.get('/getCompanyInfo', async (req, res, next) => {
     const companyID = oauthClient.getToken().realmId;
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
     const finalUrl = `${url}v3/company/${companyID}/companyinfo/${companyID}`;
@@ -151,28 +138,28 @@ app.get('/getCompanyInfo', async (req, res) => {
     try {
         const authResponse = await oauthClient.makeApiCall({ url: finalUrl });
         res.send(JSON.parse(authResponse.text()));
-    } catch(e) {
-        console.error("Error in /getCompanyInfo: ", e);
-        res.status(500).send(`Failed to get company info: ${e.message}`);
+    } catch (e) {
+        logger.error("Error in /getCompanyInfo: ", e);
+        next(new CustomError({ message: `Failed to get company info: ${e.message}`, status: 500 }));
     }
 });
 
 app.get('/getGeneralLedger', [
+    check('start_date').toDate(),
+    check('end_date').toDate(),
     check('start_date').isDate(),
     check('end_date').isDate(),
     check('accounting_method').isIn(['Cash', 'Accrual']),
-    // Add more validations as needed...
-], async (req, res) => {
+], async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        return res.status(400).json({ success: false, errors: errors.array() });
+        return res.status(400).json({ errors: errors.array() });
     }
 
     const companyID = oauthClient.getToken().realmId;
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
     const finalUrl = `${url}v3/company/${companyID}/reports/GeneralLedger`;
 
-    // Use the query parameters from the request
     const queryParams = req.query;
 
     const urlWithParams = `${finalUrl}?${new URLSearchParams(queryParams).toString()}`;
@@ -180,31 +167,35 @@ app.get('/getGeneralLedger', [
     try {
         const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
         res.send(JSON.parse(authResponse.text()));
-    } catch(e) {
+    } catch (e) {
         next(new CustomError({ message: `Failed to get general ledger: ${e.message}`, status: 500 }));
     }
 });
 
-//Root route
+
 app.get('/', (req, res) => {
     res.send('Welcome to Quickbookks!');
 });
 
-// Add error handling middleware
 app.use((err, req, res, next) => {
-    logger.error(err.message);
-    if (process.env.NODE_ENV !== 'production') {
-        logger.error(err.stack);
-    }
+    const status = err.status || 500;
+    res.status(status);
+    logger.error(`${status} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
 
-    res.status(err.status || 500).send({
-        error: {
+    if (process.env.NODE_ENV === 'development') {
+        res.json({
+            status: status,
             message: err.message,
-            status: err.status,
-        }
-    });
+            stack: err.stack
+        });
+    } else {
+        res.json({
+            status: status,
+            message: 'Something went wrong'
+        });
+    }
 });
 
-app.listen(PORT, function(){
+app.listen(PORT, function () {
     console.log(`Started on port ${PORT}`);
 });
