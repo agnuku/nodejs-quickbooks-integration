@@ -100,27 +100,6 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use((err, req, res, next) => {
-    if (res.headersSent) {
-        return next(err);
-    }
-
-    const status = err.status || 500;
-
-    logger.error(`${status} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
-
-    res.status(status);
-    if (process.env.NODE_ENV === 'development') {
-        res.json({ status: status, message: err.message, stack: err.stack });
-    } else {
-        res.json({ status: status, message: 'Internal Server Error' });
-    }
-});
-
-if (process.env.NODE_ENV === 'development') {
-    app.use(require('errorhandler')())
-}
-
 let oauth2_token_json = null;
 
 app.get('/connect', function (req, res) {
@@ -150,7 +129,10 @@ app.get('/callback', async (req, res, next) => {
         const authResponse = await oauthClient.createToken(req.url);
         const { access_token, refresh_token, expires_in } = authResponse.getJson();
         req.session.oauth2_token_json = { access_token, refresh_token, expires_in };
-        res.send(req.session.oauth2_token_json);
+        //res.send(req.session.oauth2_token_json); old code
+
+        res.redirect(`http://localhost:8080/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`); //put this "localhost ---- URL " in environment variables
+
     } catch (e) {
         logger.error("Error in /callback: ", e);
         next(new CustomError({ message: `Failed to create token: ${e.message}`, status: 500 }));
@@ -217,18 +199,6 @@ app.get('/refreshToken', async (req, res, next) => {
     }
 });
 
-
-
-// app.get('/refreshAccessToken', async (req, res, next) => {
-//     try {
-//         const authResponse = await oauthClient.refresh();
-//         oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
-//         res.send(oauth2_token_json);
-//     } catch (e) {
-//         logger.error("Error in /refreshAccessToken: ", e);
-//         next(new CustomError({ message: `Failed to refresh token: ${e.message}`, status: 500 }));
-//     }
-// });
 
 app.get('/getCompanyInfo', async (req, res, next) => {
     const companyID = oauthClient.getToken().realmId;
