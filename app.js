@@ -12,17 +12,22 @@ const csrf = require('csrf');
 const tokens = new csrf(); 
 const { check, validationResult } = require('express-validator');
 
-// Initialize the Redis client
-const client = redis.createClient({
+let client;
+
+//initialize Redis store
+client = redis.createClient({
     password: config.redisPassword,
     host: 'redis-17187.c92.us-east-1-3.ec2.cloud.redislabs.com',
     port: 17187
 });
 
-client.on('error', (err) => {
-    console.log('Redis error: ', err);
+client.on('connect', function() {
+    console.log('Redis client connected');
 });
 
+client.on('error', function (err) {
+    console.log('Something went wrong ' + err);
+});
 
 let app = express();
 
