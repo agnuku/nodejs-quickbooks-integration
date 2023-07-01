@@ -10,6 +10,7 @@ const config = require('./config.json');
 const logger = require('./logger');
 const csrf = require('csrf');
 const tokens = new csrf();
+const { isValid } = require('date-fns');
 const { check, validationResult } = require('express-validator');
 
 let client;
@@ -145,10 +146,8 @@ app.get('/getCompanyInfo', async (req, res, next) => {
 });
 
 app.get('/getGeneralLedger', [
-    check('start_date').toDate(),
-    check('end_date').toDate(),
-    check('start_date').isDate(),
-    check('end_date').isDate(),
+    check('start_date').custom(value => isValid(new Date(value))),
+    check('end_date').custom(value => isValid(new Date(value))),
     check('accounting_method').isIn(['Cash', 'Accrual']),
 ], async (req, res, next) => {
     const errors = validationResult(req);
