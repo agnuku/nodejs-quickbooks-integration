@@ -53,9 +53,10 @@ client.connect().then(() => {
 
 let app = express();
 app.use(cors({
-    origin: 'https://6b0c-73-68-198-127.ngrok-free.app', // replace  with your actual  URL using environment vars
-    credentials: true,
+    origin: 'https://6b0c-73-68-198-127.ngrok-free.app', // or your frontend origin
+    credentials: true
 }));
+
 
 const PORT = process.env.PORT || 5000;
 
