@@ -53,7 +53,7 @@ client.connect().then(() => {
 
 let app = express();
 app.use(cors({
-    origin: 'https://quickbookks-f425c88c6f16.herokuapp.com/quickbooks', // replace  with your actual  URL using environment vars
+    origin: 'https://6b0c-73-68-198-127.ngrok-free.app', // replace  with your actual  URL using environment vars
     credentials: true,
 }));
 
