@@ -52,7 +52,10 @@ client.connect().then(() => {
 });
 
 let app = express();
-app.use(cors());
+app.use(cors({
+    origin: 'https://quickbookks-f425c88c6f16.herokuapp.com/quickbooks', // replace  with your actual  URL using environment vars
+    credentials: true,
+}));
 
 const PORT = process.env.PORT || 5000;
 
@@ -133,7 +136,7 @@ app.get('/callback', async (req, res, next) => {
         const { access_token, refresh_token, expires_in } = authResponse.getJson();
         req.session.oauth2_token_json = { access_token, refresh_token, expires_in };
         // Set auth cookie for subsequent requests
-        res.cookie('quickbooks_token', JSON.stringify(req.session.oauth2_token_json), { httpOnly: true });
+        res.cookie('quickbooks_token', JSON.stringify(req.session.oauth2_token_json), { httpOnly: true, sameSite: 'none', secure: true });
         res.redirect(`https://6b0c-73-68-198-127.ngrok-free.app/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`); 
     } catch (e) {
         logger.error("Error in /callback: ", e);
