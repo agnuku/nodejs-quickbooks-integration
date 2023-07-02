@@ -13,6 +13,7 @@ const csrf = require('csrf');
 const tokens = new csrf();
 const { isValid } = require('date-fns');
 const { check, validationResult } = require('express-validator');
+const cookieParser = require('cookie-parser'); // Add this line
 
 let client;
 
@@ -52,13 +53,13 @@ client.connect().then(() => {
 
 let app = express();
 app.use(cors());
+app.use(cookieParser()); // Add this line
 
 const PORT = process.env.PORT || 5000;
 
 logger.debug('process.env.NODE_ENV: ' + process.env.NODE_ENV);
 logger.debug('process.env.PORT: ' + process.env.PORT);
 
-// Use morgan for request logging and make it use the winston logger
 app.use(logger.morgan('combined', { stream: logger.stream }));
 
 const redirectUri = process.env.NODE_ENV === 'production'
@@ -108,30 +109,30 @@ app.get('/connect', function (req, res) {
 
     const authUri = req.oauthClient.authorizeUri({
         scope: ['com.intuit.quickbooks.accounting'],
-        state: tokens.create(req.sessionID),
+        state: 'testState',
     });
-    logger.info('Redirecting to: ' + authUri);
+
     res.redirect(authUri);
 });
 
 app.get('/callback', async (req, res, next) => {
-    // Ensure state parameter is present
-    if (!req.query.state) {
-        return next(new CustomError({ message: `Missing state parameter`, status: 400 }));
-    }
-
-    // Validate CSRF token
-    if (!tokens.verify(req.sessionID, req.query.state)) {
-        return next(new CustomError({ message: `Invalid CSRF token`, status: 400 }));
-    }
+    logger.info('GET /callback route hit');
+    logger.debug("In /callback route, req.oauthClient clientId: " + req.oauthClient.clientId);
 
     try {
         const authResponse = await oauthClient.createToken(req.url);
         const { access_token, refresh_token, expires_in } = authResponse.getJson();
         req.session.oauth2_token_json = { access_token, refresh_token, expires_in };
-        //res.send(req.session.oauth2_token_json); old code
 
-        res.redirect(`https://6b0c-73-68-198-127.ngrok-free.app/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`); //put this "localhost ---- URL " in environment variables
+        // Set cookie
+        res.cookie('token', JSON.stringify(req.session.oauth2_token_json), {
+            secure: process.env.NODE_ENV === 'production',
+            httpOnly: true,
+            sameSite: 'Strict',
+            maxAge: expires_in * 1000,
+        });
+
+        res.redirect(`https://6b0c-73-68-198-127.ngrok-free.app/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`);
 
     } catch (e) {
         logger.error("Error in /callback: ", e);
@@ -139,137 +140,6 @@ app.get('/callback', async (req, res, next) => {
     }
 });
 
-
-app.post('/storeToken', async (req, res, next) => {
-    try {
-        const { access_token, refresh_token, expires_in } = req.body;
-
-        // Validation of input data
-        if(!access_token || !refresh_token || !expires_in){
-            throw new Error("Missing required field(s)");
-        }
-
-        const expiryTime = parseInt(expires_in); // make sure expires_in is a number
-
-        if(isNaN(expiryTime)){
-            throw new Error("expires_in must be a number");
-        }
-
-        // Save tokens in Redis
-        const access_token_res = await client.set('access_token', access_token, 'EX', expiryTime);
-        const refresh_token_res = await client.set('refresh_token', refresh_token);
-
-        // Check if the tokens were stored correctly
-        if (access_token_res !== 'OK' || refresh_token_res !== 'OK') {
-            throw new Error("Failed to store tokens in Redis");
-        }
-
-        res.sendStatus(200);
-    } catch (e) {
-        logger.error("Error in /storeToken: ", e);
-        next(new CustomError({ message: `Failed to store token: ${e.message}`, status: 500 }));
-    }
-});
-
-// Route for token refresh
-app.get('/refreshToken', async (req, res, next) => {
-    try {
-        const refresh_token = await client.get('refresh_token');
-
-        if(!refresh_token){
-            throw new Error("No refresh token available");
-        }
-
-        // Call the method for refreshing tokens
-        const authResponse = await oauthClient.refreshUsingToken(refresh_token);
-
-        const { access_token, expires_in } = authResponse.getJson();
-
-        // Save the new access token in Redis
-        const access_token_res = await client.set('access_token', access_token, 'EX', expires_in);
-
-        if (access_token_res !== 'OK') {
-            throw new Error("Failed to store new access token in Redis");
-        }
-
-        res.sendStatus(200);
-    } catch (e) {
-        logger.error("Error in /refreshToken: ", e);
-        next(new CustomError({ message: `Failed to refresh token: ${e.message}`, status: 500 }));
-    }
-});
-
-
-app.get('/getCompanyInfo', async (req, res, next) => {
-    const companyID = oauthClient.getToken().realmId;
-    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
-    const finalUrl = `${url}v3/company/${companyID}/companyinfo/${companyID}`;
-
-    try {
-        const authResponse = await oauthClient.makeApiCall({ url: finalUrl });
-        res.send(JSON.parse(authResponse.text()));
-    } catch (e) {
-        logger.error("Error in /getCompanyInfo: ", e);
-        next(new CustomError({ message: `Failed to get company info: ${e.message}`, status: 500 }));
-    }
-});
-
-app.get('/getGeneralLedger', [
-    check('start_date').custom(value => isValid(new Date(value))),
-    check('end_date').custom(value => isValid(new Date(value))),
-    check('accounting_method').isIn(['Cash', 'Accrual']),
-], async (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
-
-    const companyID = oauthClient.getToken().realmId;
-    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
-    const finalUrl = `${url}v3/company/${companyID}/reports/GeneralLedger`;
-
-    const queryParams = {
-        ...req.query,
-        columns: 'tx_date, txn_type, doc_num, name, memo, split_acc, subt_nat_amount, account_name, chk_print_state, create_by, create_date, cust_name, emp_name, inv_date, is_adj, is_ap_paid, is_ar_paid, is_cleared, item_name, last_mod_by, last_mod_date, quantity, rate, vend_name'
-    };
-
-    const urlWithParams = `${finalUrl}?${new URLSearchParams(queryParams).toString()}`;
-
-    try {
-        const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
-        if (!authResponse || !authResponse.ok) {
-            throw new CustomError({ message: `API request failed with status ${authResponse ? authResponse.status : 'unknown'}`, status: authResponse ? authResponse.status : 500 });
-        }
-        res.send(JSON.parse(authResponse.text()));
-    } catch (e) {
-        next(e instanceof CustomError ? e : new CustomError({ message: `Failed to get general ledger: ${e.message}`, status: 500 }));
-    }
-});
-
-
-app.get('/', (req, res) => {
-    res.send('Welcome to Quickbookks!');
-});
-
-app.use((err, req, res, next) => {
-    const status = err.status || 500;
-    res.status(status);
-    logger.error(`${status} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
-
-    if (process.env.NODE_ENV === 'development') {
-        res.json({
-            status: status,
-            message: err.message,
-            stack: err.stack
-        });
-    } else {
-        res.json({
-            status: status,
-            message: 'Something went wrong'
-        });
-    }
-});
-
 app.listen(PORT, function () {
-    logger.info(`Started on port ${PORT}`);
+    logger.info(`Server started on port ${PORT}`);
 });
