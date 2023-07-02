@@ -228,15 +228,21 @@ app.get('/getGeneralLedger', [
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
     const finalUrl = `${url}v3/company/${companyID}/reports/GeneralLedger`;
 
-    const queryParams = req.query;
+    const queryParams = {
+        ...req.query,
+        columns: 'tx_date, txn_type, doc_num, name, memo, split_acc, subt_nat_amount, account_name, chk_print_state, create_by, create_date, cust_name, emp_name, inv_date, is_adj, is_ap_paid, is_ar_paid, is_cleared, item_name, last_mod_by, last_mod_date, quantity, rate, vend_name'
+    };
 
     const urlWithParams = `${finalUrl}?${new URLSearchParams(queryParams).toString()}`;
 
     try {
         const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
+        if (!authResponse || !authResponse.ok) {
+            throw new CustomError({ message: `API request failed with status ${authResponse ? authResponse.status : 'unknown'}`, status: authResponse ? authResponse.status : 500 });
+        }
         res.send(JSON.parse(authResponse.text()));
     } catch (e) {
-        next(new CustomError({ message: `Failed to get general ledger: ${e.message}`, status: 500 }));
+        next(e instanceof CustomError ? e : new CustomError({ message: `Failed to get general ledger: ${e.message}`, status: 500 }));
     }
 });
 
