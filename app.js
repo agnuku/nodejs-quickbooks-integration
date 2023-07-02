@@ -26,7 +26,6 @@ client = redis.createClient({
 });
 
 client.connect().then(() => {
-    logger.info('Redis client connected');
     client.on('connect', function () {
         logger.info('Redis client connected');
     });
@@ -109,34 +108,17 @@ let oauth2_token_json = null;
 
 app.use(cookieParser());
 
-app.get('/connect', function (req, res) {
-    logger.info('GET /connect route hit');
-    logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
-
-    const authUri = req.oauthClient.authorizeUri({
-        scope: ['com.intuit.quickbooks.accounting'],
-        state: tokens.create(req.sessionID),
-    });
-    logger.info('Redirecting to: ' + authUri);
-    res.redirect(authUri);
-});
-
 app.get('/callback', async (req, res, next) => {
-    // Ensure state parameter is present
     if (!req.query.state) {
         return next(new CustomError({ message: `Missing state parameter`, status: 400 }));
     }
-
-    // Validate CSRF token
     if (!tokens.verify(req.sessionID, req.query.state)) {
         return next(new CustomError({ message: `Invalid CSRF token`, status: 400 }));
     }
-
     try {
-        const authResponse = await oauthClient.createToken(req.url);
+        const authResponse = await oauthClient.createToken(req.url).catch(e => { throw e; });
         const { access_token, refresh_token, expires_in } = authResponse.getJson();
         req.session.oauth2_token_json = { access_token, refresh_token, expires_in };
-        // Set auth cookie for subsequent requests
         res.cookie('quickbooks_token', JSON.stringify(req.session.oauth2_token_json), { httpOnly: true, sameSite: 'none', secure: true });
         res.redirect(`https://6b0c-73-68-198-127.ngrok-free.app/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`); 
     } catch (e) {
@@ -145,31 +127,21 @@ app.get('/callback', async (req, res, next) => {
     }
 });
 
-
 app.post('/storeToken', async (req, res, next) => {
     try {
         const { access_token, refresh_token, expires_in } = req.body;
-
-        // Validation of input data
         if(!access_token || !refresh_token || !expires_in){
             throw new Error("Missing required field(s)");
         }
-
-        const expiryTime = parseInt(expires_in); // make sure expires_in is a number
-
+        const expiryTime = parseInt(expires_in);
         if(isNaN(expiryTime)){
             throw new Error("expires_in must be a number");
         }
-
-        // Save tokens in Redis
-        const access_token_res = await client.set('access_token', access_token, 'EX', expiryTime);
-        const refresh_token_res = await client.set('refresh_token', refresh_token);
-
-        // Check if the tokens were stored correctly
+        const access_token_res = await client.set('access_token', access_token, 'EX', expiryTime).catch(e => { throw e; });
+        const refresh_token_res = await client.set('refresh_token', refresh_token).catch(e => { throw e; });
         if (access_token_res !== 'OK' || refresh_token_res !== 'OK') {
             throw new Error("Failed to store tokens in Redis");
         }
-
         res.sendStatus(200);
     } catch (e) {
         logger.error("Error in /storeToken: ", e);
@@ -177,27 +149,18 @@ app.post('/storeToken', async (req, res, next) => {
     }
 });
 
-// Route for token refresh
 app.get('/refreshToken', async (req, res, next) => {
     try {
-        const refresh_token = await client.get('refresh_token');
-
+        const refresh_token = await client.get('refresh_token').catch(e => { throw e; });
         if(!refresh_token){
             throw new Error("No refresh token available");
         }
-
-        // Call the method for refreshing tokens
-        const authResponse = await oauthClient.refreshUsingToken(refresh_token);
-
+        const authResponse = await oauthClient.refreshUsingToken(refresh_token).catch(e => { throw e; });
         const { access_token, expires_in } = authResponse.getJson();
-
-        // Save the new access token in Redis
-        const access_token_res = await client.set('access_token', access_token, 'EX', expires_in);
-
+        const access_token_res = await client.set('access_token', access_token, 'EX', expires_in).catch(e => { throw e; });
         if (access_token_res !== 'OK') {
             throw new Error("Failed to store new access token in Redis");
         }
-
         res.sendStatus(200);
     } catch (e) {
         logger.error("Error in /refreshToken: ", e);
@@ -205,50 +168,36 @@ app.get('/refreshToken', async (req, res, next) => {
     }
 });
 
-
 app.get('/getCompanyInfo', async (req, res, next) => {
     const companyID = oauthClient.getToken().realmId;
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
-    const finalUrl = `${url}v3/company/${companyID}/companyinfo/${companyID}`;
-
+    const finalUrl = url.replace('https://', 'https://quickbooks.api.intuit.com/') + `v3/company/${companyID}/companyinfo/${companyID}`;
     try {
-        const authResponse = await oauthClient.makeApiCall({ url: finalUrl });
+        const authResponse = await oauthClient.makeApiCall({ url: finalUrl }).catch(e => { throw e; });
         res.send(JSON.parse(authResponse.text()));
     } catch (e) {
         logger.error("Error in /getCompanyInfo: ", e);
-        next(new CustomError({ message: `Failed to get company info: ${e.message}`, status: 500 }));
+        next(new CustomError({ message: `Failed to fetch company info: ${e.message}`, status: 500 }));
     }
 });
 
 app.get('/getGeneralLedger', [
-    check('start_date').custom(value => isValid(new Date(value))),
-    check('end_date').custom(value => isValid(new Date(value))),
-    check('accounting_method').isIn(['Cash', 'Accrual']),
+    check('start_date').isISO8601().withMessage('start_date must be a valid date in YYYY-MM-DD format'),
+    check('end_date').isISO8601().withMessage('end_date must be a valid date in YYYY-MM-DD format'),
 ], async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        return next(new CustomError({ message: errors.array(), status: 400 }));
     }
-
     const companyID = oauthClient.getToken().realmId;
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
-    const finalUrl = `${url}v3/company/${companyID}/reports/GeneralLedger`;
-
-    const queryParams = {
-        ...req.query,
-        columns: 'tx_date, txn_type, doc_num, name, memo, split_acc, subt_nat_amount, account_name, chk_print_state, create_by, create_date, cust_name, emp_name, inv_date, is_adj, is_ap_paid, is_ar_paid, is_cleared, item_name, last_mod_by, last_mod_date, quantity, rate, vend_name'
-    };
-
-    const urlWithParams = `${finalUrl}?${new URLSearchParams(queryParams).toString()}`;
-
+    const urlWithParams = url.replace('https://', 'https://quickbooks.api.intuit.com/') + `v3/company/${companyID}/reports/GeneralLedger?start_date=${req.query.start_date}&end_date=${req.query.end_date}`;
     try {
-        const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
-        if (!authResponse || !authResponse.ok) {
-            throw new CustomError({ message: `API request failed with status ${authResponse ? authResponse.status : 'unknown'}`, status: authResponse ? authResponse.status : 500 });
-        }
+        const authResponse = await oauthClient.makeApiCall({ url: urlWithParams }).catch(e => { throw e; });
         res.send(JSON.parse(authResponse.text()));
     } catch (e) {
-        next(e instanceof CustomError ? e : new CustomError({ message: `Failed to get general ledger: ${e.message}`, status: 500 }));
+        logger.error("Error in /getGeneralLedger: ", e);
+        next(new CustomError({ message: `Failed to fetch General Ledger: ${e.message}`, status: 500 }));
     }
 });
 
