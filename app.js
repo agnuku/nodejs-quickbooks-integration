@@ -127,12 +127,13 @@ app.get('/callback', async (req, res, next) => {
     }
 });
 
-app.post('/storeToken', async (req, res, next) => {
+app.post('/storeToken', [check('access_token').exists().withMessage('access_token is required'), check('refresh_token').exists().withMessage('refresh_token is required'), check('expires_in').exists().withMessage('expires_in is required')], async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return next(new CustomError({ message: errors.array(), status: 400 }));
+    }
     try {
         const { access_token, refresh_token, expires_in } = req.body;
-        if(!access_token || !refresh_token || !expires_in){
-            throw new Error("Missing required field(s)");
-        }
         const expiryTime = parseInt(expires_in);
         if(isNaN(expiryTime)){
             throw new Error("expires_in must be a number");
@@ -170,61 +171,30 @@ app.get('/refreshToken', async (req, res, next) => {
 
 app.get('/getCompanyInfo', async (req, res, next) => {
     const companyID = oauthClient.getToken().realmId;
-    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
-    const finalUrl = url.replace('https://', 'https://quickbooks.api.intuit.com/') + `v3/company/${companyID}/companyinfo/${companyID}`;
+    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production ;
     try {
-        const authResponse = await oauthClient.makeApiCall({ url: finalUrl }).catch(e => { throw e; });
-        res.send(JSON.parse(authResponse.text()));
+        const access_token = await client.get('access_token').catch(e => { throw e; });
+        if(!access_token){
+            throw new Error("No access token available");
+        }
+        oauthClient.setToken({ access_token: access_token });
+        const companyInfo = await oauthClient.makeApiCall({ url: `${url}v3/company/${companyID}/companyinfo/${companyID}` }).catch(e => { throw e; });
+        res.json(companyInfo.json);
     } catch (e) {
         logger.error("Error in /getCompanyInfo: ", e);
-        next(new CustomError({ message: `Failed to fetch company info: ${e.message}`, status: 500 }));
+        next(new CustomError({ message: `Failed to get company info: ${e.message}`, status: 500 }));
     }
-});
-
-app.get('/getGeneralLedger', [
-    check('start_date').isISO8601().withMessage('start_date must be a valid date in YYYY-MM-DD format'),
-    check('end_date').isISO8601().withMessage('end_date must be a valid date in YYYY-MM-DD format'),
-], async (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return next(new CustomError({ message: errors.array(), status: 400 }));
-    }
-    const companyID = oauthClient.getToken().realmId;
-    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
-    const urlWithParams = url.replace('https://', 'https://quickbooks.api.intuit.com/') + `v3/company/${companyID}/reports/GeneralLedger?start_date=${req.query.start_date}&end_date=${req.query.end_date}`;
-    try {
-        const authResponse = await oauthClient.makeApiCall({ url: urlWithParams }).catch(e => { throw e; });
-        res.send(JSON.parse(authResponse.text()));
-    } catch (e) {
-        logger.error("Error in /getGeneralLedger: ", e);
-        next(new CustomError({ message: `Failed to fetch General Ledger: ${e.message}`, status: 500 }));
-    }
-});
-
-
-app.get('/', (req, res) => {
-    res.send('Welcome to Quickbookks!');
 });
 
 app.use((err, req, res, next) => {
-    const status = err.status || 500;
-    res.status(status);
-    logger.error(`${status} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
-
-    if (process.env.NODE_ENV === 'development') {
-        res.json({
-            status: status,
-            message: err.message,
-            stack: err.stack
-        });
-    } else {
-        res.json({
-            status: status,
-            message: 'Something went wrong'
-        });
+    if (err instanceof CustomError) {
+        return res.status(err.status).send(err.message);
     }
+    res.status(500).send('Internal Server Error');
 });
 
-app.listen(PORT, function () {
-    logger.info(`Started on port ${PORT}`);
+app.listen(PORT, () => {
+    logger.info(`Server running on port: ${PORT}`);
 });
+
+module.exports = app;
