@@ -108,6 +108,24 @@ let oauth2_token_json = null;
 
 app.use(cookieParser());
 
+app.get('/connect', async (req, res, next) => {
+    try {
+        logger.info('GET /connect route hit');
+        logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
+    
+        const authUri = req.oauthClient.authorizeUri({
+            scope: ['com.intuit.quickbooks.accounting'],
+            state: tokens.create(req.sessionID),
+        });
+        logger.info('Redirecting to: ' + authUri);
+        res.redirect(authUri);
+    } catch (e) {
+        logger.error("Error in /connect: ", e);
+        next(new CustomError({ message: `Failed to redirect to authUri: ${e.message}`, status: 500 }));
+    }
+});
+
+
 app.get('/callback', async (req, res, next) => {
     if (!req.query.state) {
         return next(new CustomError({ message: `Missing state parameter`, status: 400 }));
