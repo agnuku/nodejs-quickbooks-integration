@@ -190,17 +190,27 @@ app.get('/refreshToken', async (req, res, next) => {
 app.get('/getCompanyInfo', async (req, res, next) => {
     const companyID = oauthClient.getToken().realmId;
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production ;
+
+    // Retrieve the access token from the Authorization header
+    const authHeader = req.headers.authorization;
+    const accessToken = authHeader && authHeader.split(' ')[1];
+
     try {
-        const access_token = await client.get('access_token').catch(e => { throw e; });
-        if(!access_token){
-            throw new Error("No access token available");
+        if (!accessToken) {
+            throw new Error("No access token provided");
         }
-        oauthClient.setToken({ access_token: access_token });
-        const companyInfo = await oauthClient.makeApiCall({ url: `${url}v3/company/${companyID}/companyinfo/${companyID}` }).catch(e => { throw e; });
+
+        oauthClient.setToken({ access_token: accessToken });
+        const companyInfo = await oauthClient.makeApiCall({ url: `${url}v3/company/${companyID}/companyinfo/${companyID}` });
         res.json(companyInfo.json);
     } catch (e) {
         logger.error("Error in /getCompanyInfo: ", e);
-        next(new CustomError({ message: `Failed to get company info: ${e.message}`, status: 500 }));
+        // If there's an issue with the access token, respond with a 401 status code
+        if (e.message === 'No access token provided' || e.message === 'The access token expired') {
+            res.status(401).json({ message: 'Unauthorized: ' + e.message });
+        } else {
+            next(new CustomError({ message: `Failed to get company info: ${e.message}`, status: 500 }));
+        }
     }
 });
 
