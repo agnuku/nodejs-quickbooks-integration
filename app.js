@@ -135,7 +135,11 @@ app.get('/callback', async (req, res, next) => {
     }
     try {
         const authResponse = await oauthClient.createToken(req.url).catch(e => { throw e; });
+        logger.debug("authResponse: " + JSON.stringify(authResponse));
         const { access_token, refresh_token, expires_in } = authResponse.getJson();
+        logger.debug("access_token: " + access_token);
+        logger.debug("refresh_token: " + refresh_token);
+        logger.debug("expires_in: " + expires_in);
         req.session.oauth2_token_json = { access_token, refresh_token, expires_in };
         res.cookie('quickbooks_token', JSON.stringify(req.session.oauth2_token_json), { httpOnly: true, sameSite: 'none', secure: true });
         res.redirect(`https://6b0c-73-68-198-127.ngrok-free.app/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`); 
@@ -144,6 +148,7 @@ app.get('/callback', async (req, res, next) => {
         next(new CustomError({ message: `Failed to create token: ${e.message}`, status: 500 }));
     }
 });
+
 
 app.post('/storeToken', [check('access_token').exists().withMessage('access_token is required'), check('refresh_token').exists().withMessage('refresh_token is required'), check('expires_in').exists().withMessage('expires_in is required')], async (req, res, next) => {
     const errors = validationResult(req);
@@ -189,30 +194,42 @@ app.get('/refreshToken', async (req, res, next) => {
 
 app.get('/getCompanyInfo', async (req, res, next) => {
     const companyID = oauthClient.getToken().realmId;
-    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production ;
+    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
 
     // Retrieve the access token from the Authorization header
     const authHeader = req.headers.authorization;
     const accessToken = authHeader && authHeader.split(' ')[1];
 
     try {
+        // Log the access token received from the client
+        logger.debug("Access Token Received: " + accessToken);  // added line
+
         if (!accessToken) {
             throw new Error("No access token provided");
         }
 
         oauthClient.setToken({ access_token: accessToken });
         const companyInfo = await oauthClient.makeApiCall({ url: `${url}v3/company/${companyID}/companyinfo/${companyID}` });
+
+        // Log the company info retrieved
+        logger.debug("Company Info Retrieved: " + JSON.stringify(companyInfo.json));  // added line
+
         res.json(companyInfo.json);
     } catch (e) {
         logger.error("Error in /getCompanyInfo: ", e);
+
         // If there's an issue with the access token, respond with a 401 status code
         if (e.message === 'No access token provided' || e.message === 'The access token expired') {
             res.status(401).json({ message: 'Unauthorized: ' + e.message });
         } else {
+            // Log the detailed error information
+            logger.error("Detailed Error in /getCompanyInfo: ", e);  // added line
+
             next(new CustomError({ message: `Failed to get company info: ${e.message}`, status: 500 }));
         }
     }
 });
+
 
 app.use((err, req, res, next) => {
     if (err instanceof CustomError) {
