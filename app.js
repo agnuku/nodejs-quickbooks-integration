@@ -14,7 +14,6 @@ const tokens = new csrf();
 const { isValid } = require('date-fns');
 const { check, validationResult } = require('express-validator');
 const cookieParser = require('cookie-parser');
-const axios = require('axios');  // Use Axios for making HTTP requests to the /refreshToken route
 
 let client;
 
@@ -94,6 +93,7 @@ app.use(session({
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: true,
+    cookie: { secure: false }  // For development purposes, use secure: true for production environments
 }));
 
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -108,6 +108,44 @@ app.use((req, res, next) => {
 let oauth2_token_json = null;
 
 app.use(cookieParser());
+
+// Middlewares
+
+// Middleware to check token and refresh if necessary
+app.use(async (req, res, next) => {
+    const { oauth2_token_json } = req.session;
+
+    if (!oauth2_token_json) {
+        return next();
+    }
+
+    const { access_token, refresh_token, expires_at } = oauth2_token_json;
+
+    // If token has expired, refresh it
+    if (Date.now() >= expires_at) {
+        try {
+            const authResponse = await oauthClient.refreshUsingToken(refresh_token);
+            const { access_token, refresh_token, expiresIn } = authResponse.getJson();
+
+            // Add the new token and expiry time to the session
+            req.session.oauth2_token_json = {
+                access_token,
+                refresh_token,
+                expires_at: Date.now() + expiresIn * 1000
+            };
+        } catch (e) {
+            logger.error("Error in token refresh middleware: ", e);
+            return next(new CustomError({ message: `Failed to refresh token: ${e.message}`, status: 500 }));
+        }
+    }
+
+    next();
+});
+app.use(cookieParser());
+
+
+
+
 
 app.get('/connect', async (req, res, next) => {
     try {
@@ -125,7 +163,6 @@ app.get('/connect', async (req, res, next) => {
         next(new CustomError({ message: `Failed to redirect to authUri: ${e.message}`, status: 500 }));
     }
 });
-
 
 app.get('/callback', async (req, res, next) => {
     if (!req.query.state) {
@@ -149,14 +186,12 @@ app.get('/callback', async (req, res, next) => {
         logger.debug("Token expires at: " + new Date(expires_at).toISOString());
 
         req.session.oauth2_token_json = { access_token, refresh_token, expires_in, created_at, expires_at };
-        res.cookie('quickbooks_token', JSON.stringify(req.session.oauth2_token_json), { httpOnly: true, sameSite: 'none', secure: true });
         res.redirect(`https://6b0c-73-68-198-127.ngrok-free.app/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`); 
     } catch (e) {
         logger.error("Error in /callback: ", e);
         next(new CustomError({ message: `Failed to create token: ${e.message}`, status: 500 }));
     }
 });
-
 
 app.post('/storeToken', [check('access_token').exists().withMessage('access_token is required'), check('refresh_token').exists().withMessage('refresh_token is required'), check('expires_in').exists().withMessage('expires_in is required')], async (req, res, next) => {
     const errors = validationResult(req);
@@ -171,7 +206,9 @@ app.post('/storeToken', [check('access_token').exists().withMessage('access_toke
         logger.debug("Received refresh_token: " + refresh_token);
         logger.debug("Received expires_in: " + expires_in);
 
-        // Rest of your code...
+        // Update the session with the new token details
+        req.session.oauth2_token_json = { access_token, refresh_token, expires_in, created_at: Date.now(), expires_at: Date.now() + expires_in * 1000 };
+        res.sendStatus(200);
     } catch (e) {
         logger.error("Error in /storeToken: ", e);
         next(new CustomError({ message: `Failed to store token: ${e.message}`, status: 500 }));
@@ -180,16 +217,19 @@ app.post('/storeToken', [check('access_token').exists().withMessage('access_toke
 
 app.get('/refreshToken', async (req, res, next) => {
     try {
-        const refresh_token = await client.get('refresh_token').catch(e => { throw e; });
-        if(!refresh_token){
+        if (!req.session || !req.session.oauth2_token_json || !req.session.oauth2_token_json.refresh_token) {
             throw new Error("No refresh token available");
         }
-        const authResponse = await oauthClient.refreshUsingToken(refresh_token).catch(e => { throw e; });
+
+        const authResponse = await oauthClient.refreshUsingToken(req.session.oauth2_token_json.refresh_token).catch(e => { throw e; });
         const { access_token, expires_in } = authResponse.getJson();
-        const access_token_res = await client.set('access_token', access_token, 'EX', expires_in).catch(e => { throw e; });
-        if (access_token_res !== 'OK') {
-            throw new Error("Failed to store new access token in Redis");
-        }
+
+        // Update the session with the new access token and expiry time
+        req.session.oauth2_token_json.access_token = access_token;
+        req.session.oauth2_token_json.expires_in = expires_in;
+        req.session.oauth2_token_json.created_at = Date.now();
+        req.session.oauth2_token_json.expires_at = Date.now() + expires_in * 1000;
+
         res.sendStatus(200);
     } catch (e) {
         logger.error("Error in /refreshToken: ", e);
@@ -258,6 +298,47 @@ app.get('/getCompanyInfo', async (req, res, next) => {
     }
 });
 
+app.get('/getGeneralLedger', [
+    check('start_date').custom(value => isValid(new Date(value))),
+    check('end_date').custom(value => isValid(new Date(value))),
+    check('accounting_method').isIn(['Cash', 'Accrual']),
+], async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    if (!req.session || !req.session.oauth2_token_json || !req.session.oauth2_token_json.access_token) {
+        return next(new CustomError({ message: 'No access token available', status: 401 }));
+    }
+
+    // Retrieve the access token from the session
+    const { access_token } = req.session.oauth2_token_json;
+
+    // Set the token to the OAuth client
+    oauthClient.setToken({ access_token });
+
+    const companyID = oauthClient.getToken().realmId;
+    const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
+    const finalUrl = `${url}v3/company/${companyID}/reports/GeneralLedger`;
+
+    const queryParams = {
+        ...req.query,
+        columns: 'tx_date, txn_type, doc_num, name, memo, split_acc, subt_nat_amount, account_name, chk_print_state, create_by, create_date, cust_name, emp_name, inv_date, is_adj, is_ap_paid, is_ar_paid, is_cleared, item_name, last_mod_by, last_mod_date, quantity, rate, vend_name'
+    };
+
+    const urlWithParams = `${finalUrl}?${new URLSearchParams(queryParams).toString()}`;
+
+    try {
+        const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
+        if (!authResponse || !authResponse.ok) {
+            throw new CustomError({ message: `API request failed with status ${authResponse ? authResponse.status : 'unknown'}`, status: authResponse ? authResponse.status : 500 });
+        }
+        res.send(JSON.parse(authResponse.text()));
+    } catch (e) {
+        next(e instanceof CustomError ? e : new CustomError({ message: `Failed to get general ledger: ${e.message}`, status: 500 }));
+    }
+});
 
 
 app.use((err, req, res, next) => {
