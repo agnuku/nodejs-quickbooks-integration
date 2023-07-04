@@ -141,7 +141,14 @@ app.get('/callback', async (req, res, next) => {
         logger.debug("access_token: " + access_token);
         logger.debug("refresh_token: " + refresh_token);
         logger.debug("expires_in: " + expires_in);
-        req.session.oauth2_token_json = { access_token, refresh_token, expires_in };
+
+        // Log the creation and expiry date/time of the token
+        const created_at = Date.now();
+        const expires_at = created_at + expires_in * 1000;
+        logger.debug("Token created at: " + new Date(created_at).toISOString());
+        logger.debug("Token expires at: " + new Date(expires_at).toISOString());
+
+        req.session.oauth2_token_json = { access_token, refresh_token, expires_in, created_at, expires_at };
         res.cookie('quickbooks_token', JSON.stringify(req.session.oauth2_token_json), { httpOnly: true, sameSite: 'none', secure: true });
         res.redirect(`https://6b0c-73-68-198-127.ngrok-free.app/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`); 
     } catch (e) {
@@ -158,16 +165,13 @@ app.post('/storeToken', [check('access_token').exists().withMessage('access_toke
     }
     try {
         const { access_token, refresh_token, expires_in } = req.body;
-        const expiryTime = parseInt(expires_in);
-        if(isNaN(expiryTime)){
-            throw new Error("expires_in must be a number");
-        }
-        const access_token_res = await client.set('access_token', access_token, 'EX', expiryTime).catch(e => { throw e; });
-        const refresh_token_res = await client.set('refresh_token', refresh_token).catch(e => { throw e; });
-        if (access_token_res !== 'OK' || refresh_token_res !== 'OK') {
-            throw new Error("Failed to store tokens in Redis");
-        }
-        res.sendStatus(200);
+
+        // Log the received tokens and their expiry time
+        logger.debug("Received access_token: " + access_token);
+        logger.debug("Received refresh_token: " + refresh_token);
+        logger.debug("Received expires_in: " + expires_in);
+
+        // Rest of your code...
     } catch (e) {
         logger.error("Error in /storeToken: ", e);
         next(new CustomError({ message: `Failed to store token: ${e.message}`, status: 500 }));
