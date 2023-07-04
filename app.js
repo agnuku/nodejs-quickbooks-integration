@@ -51,8 +51,16 @@ client.connect().then(() => {
 });
 
 let app = express();
+
 app.use(cors({
-    origin: 'https://6b0c-73-68-198-127.ngrok-free.app', // or your frontend origin
+    origin: function (origin, callback) {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) === -1) {
+            const msg = `The CORS policy for this site does not allow access from the specified origin.`;
+            return callback(new Error(msg), false);
+        }
+        return callback(null, true);
+    },
     credentials: true
 }));
 
@@ -95,6 +103,12 @@ app.use(session({
     saveUninitialized: true,
     cookie: { secure: false }  // For development purposes, use secure: true for production environments
 }));
+
+// Debugging middleware
+app.use((req, res, next) => {
+    console.log(req.session);
+    next();
+});
 
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
@@ -144,9 +158,6 @@ app.use(async (req, res, next) => {
 app.use(cookieParser());
 
 
-
-
-
 app.get('/connect', async (req, res, next) => {
     try {
         logger.info('GET /connect route hit');
@@ -193,27 +204,6 @@ app.get('/callback', async (req, res, next) => {
     }
 });
 
-app.post('/storeToken', [check('access_token').exists().withMessage('access_token is required'), check('refresh_token').exists().withMessage('refresh_token is required'), check('expires_in').exists().withMessage('expires_in is required')], async (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return next(new CustomError({ message: errors.array(), status: 400 }));
-    }
-    try {
-        const { access_token, refresh_token, expires_in } = req.body;
-
-        // Log the received tokens and their expiry time
-        logger.debug("Received access_token: " + access_token);
-        logger.debug("Received refresh_token: " + refresh_token);
-        logger.debug("Received expires_in: " + expires_in);
-
-        // Update the session with the new token details
-        req.session.oauth2_token_json = { access_token, refresh_token, expires_in, created_at: Date.now(), expires_at: Date.now() + expires_in * 1000 };
-        res.sendStatus(200);
-    } catch (e) {
-        logger.error("Error in /storeToken: ", e);
-        next(new CustomError({ message: `Failed to store token: ${e.message}`, status: 500 }));
-    }
-});
 
 app.get('/refreshToken', async (req, res, next) => {
     try {
@@ -224,11 +214,11 @@ app.get('/refreshToken', async (req, res, next) => {
         const authResponse = await oauthClient.refreshUsingToken(req.session.oauth2_token_json.refresh_token).catch(e => { throw e; });
         const { access_token, expires_in } = authResponse.getJson();
 
-        // Update the session with the new access token and expiry time
         req.session.oauth2_token_json.access_token = access_token;
         req.session.oauth2_token_json.expires_in = expires_in;
         req.session.oauth2_token_json.created_at = Date.now();
         req.session.oauth2_token_json.expires_at = Date.now() + expires_in * 1000;
+        req.session.oauth2_token_json.realmId = oauthClient.getToken().realmId; // store company ID
 
         res.sendStatus(200);
     } catch (e) {
@@ -236,7 +226,6 @@ app.get('/refreshToken', async (req, res, next) => {
         next(new CustomError({ message: `Failed to refresh token: ${e.message}`, status: 500 }));
     }
 });
-
 
 app.get('/getCompanyInfo', async (req, res, next) => {
     const companyID = oauthClient.getToken().realmId;
