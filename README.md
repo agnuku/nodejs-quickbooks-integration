@@ -65,3 +65,36 @@ This QuickBooks Node.js OAuth2 Integration App is a simple application to demons
 General Ledger query
 Using parameters
 /getGeneralLedger?start_date=2023-07-01&end_date=2023-12-31&accounting_method=Accrual
+
+
+
+---------------------cookies-------------
+
+Here's a summary of how the server handles cookies:
+
+When a client initiates the OAuth process by calling /connect, the server redirects the client to the QuickBooks authentication page. An anti-CSRF token is also generated and stored in the session.
+
+Once the user has authorized the application on the QuickBooks authentication page, they are redirected back to the /callback route on your server.
+
+In the /callback route, the server exchanges the authorization code it received for an access token and a refresh token. These are stored in the session and set in a secure, HTTP-only cookie (quickbooks_token).
+
+This is done with the following line of code:
+
+javascript
+Copy code
+res.cookie('quickbooks_token', JSON.stringify(req.session.oauth2_token_json), { httpOnly: true, sameSite: 'none', secure: true });
+This cookie is HTTP-only, which means it can't be accessed by JavaScript running in the browser. This is a security feature that helps to prevent the token from being stolen via cross-site scripting (XSS) attacks.
+
+The SameSite attribute is set to None and the Secure attribute is set to true, which means this cookie can be sent over cross-site requests, but only over secure (HTTPS) connections.
+
+Then, the server redirects the client back to the client-side app, including the token in the URL. The client-side app should then store this token in a cookie, which it uses for future requests to the /getCompanyInfo endpoint.
+
+When the server receives a request to the /getCompanyInfo endpoint, it expects the token to be included in the Authorization header:
+
+javascript
+Copy code
+const authHeader = req.headers.authorization;
+const accessToken = authHeader && authHeader.split(' ')[1];
+The one thing that should be noted is that while you are setting the token in a cookie on the server-side, the server actually expects the token to be included in the Authorization header in the /getCompanyInfo route. So on the client-side, you will need to retrieve the token from the cookie and include it in the Authorization header when making requests to the /getCompanyInfo route.
+
+As long as your client-side code is correctly setting the token in a cookie and then including it in the Authorization header when making requests to /getCompanyInfo, this setup should work as expected.
