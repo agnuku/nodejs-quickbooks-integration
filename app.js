@@ -14,6 +14,7 @@ const tokens = new csrf();
 const { isValid } = require('date-fns');
 const { check, validationResult } = require('express-validator');
 const cookieParser = require('cookie-parser');
+const axios = require('axios');  // Use Axios for making HTTP requests to the /refreshToken route
 
 let client;
 
@@ -192,43 +193,67 @@ app.get('/refreshToken', async (req, res, next) => {
     }
 });
 
+
 app.get('/getCompanyInfo', async (req, res, next) => {
     const companyID = oauthClient.getToken().realmId;
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
 
-    // Retrieve the access token from the Authorization header
-    const authHeader = req.headers.authorization;
-    const accessToken = authHeader && authHeader.split(' ')[1];
+    // Retrieve the access token from the cookie
+    const cookie = req.cookies.quickbooks_token;
+    const tokenObj = JSON.parse(cookie);
 
     try {
-        // Log the access token received from the client
-        logger.debug("Access Token Received: " + accessToken);  // added line
+        logger.debug("Token Object Received: " + JSON.stringify(tokenObj));
 
-        if (!accessToken) {
-            throw new Error("No access token provided");
+        // Validate the token object
+        if (!tokenObj || !tokenObj.access_token || !tokenObj.expires_in || !tokenObj.issued_at) {
+            throw new Error("Invalid token object");
         }
 
-        oauthClient.setToken({ access_token: accessToken });
+        // Check if the token has expired
+        const currentTime = Math.floor(Date.now() / 1000);  // current time in seconds since the Unix Epoch
+        if (currentTime >= tokenObj.issued_at + tokenObj.expires_in) {
+            // The token has expired, refresh it
+            const refreshResponse = await axios.get('/refreshToken');
+
+            if (refreshResponse.status !== 200) {
+                throw new Error("Failed to refresh the token");
+            }
+
+            // Retrieve the new token from the cookie
+            const newCookie = req.cookies.quickbooks_token;
+            const newTokenObj = JSON.parse(newCookie);
+
+            if (!newTokenObj || !newTokenObj.access_token) {
+                throw new Error("Failed to get the new token after refreshing");
+            }
+
+            tokenObj.access_token = newTokenObj.access_token;
+        }
+
+        // Set the token in the OAuth client
+        oauthClient.setToken({ access_token: tokenObj.access_token });
+
+        // Make the API call
         const companyInfo = await oauthClient.makeApiCall({ url: `${url}v3/company/${companyID}/companyinfo/${companyID}` });
 
-        // Log the company info retrieved
-        logger.debug("Company Info Retrieved: " + JSON.stringify(companyInfo.json));  // added line
+        logger.debug("Company Info Retrieved: " + JSON.stringify(companyInfo.json));
 
         res.json(companyInfo.json);
     } catch (e) {
         logger.error("Error in /getCompanyInfo: ", e);
 
-        // If there's an issue with the access token, respond with a 401 status code
-        if (e.message === 'No access token provided' || e.message === 'The access token expired') {
+        if (e.message === 'Invalid token object' || e.message === 'The access token expired' ||
+            e.message === 'Failed to refresh the token' || e.message === 'Failed to get the new token after refreshing') {
             res.status(401).json({ message: 'Unauthorized: ' + e.message });
         } else {
-            // Log the detailed error information
-            logger.error("Detailed Error in /getCompanyInfo: ", e);  // added line
+            logger.error("Detailed Error in /getCompanyInfo: ", e);
 
             next(new CustomError({ message: `Failed to get company info: ${e.message}`, status: 500 }));
         }
     }
 });
+
 
 
 app.use((err, req, res, next) => {
