@@ -13,7 +13,6 @@ const csrf = require('csrf');
 const tokens = new csrf();
 const { isValid } = require('date-fns');
 const { check, validationResult } = require('express-validator');
-const cookieParser = require('cookie-parser');
 
 let client;
 
@@ -26,6 +25,7 @@ client = redis.createClient({
 });
 
 client.connect().then(() => {
+    logger.info('Redis client connected');
     client.on('connect', function () {
         logger.info('Redis client connected');
     });
@@ -51,9 +51,7 @@ client.connect().then(() => {
 });
 
 let app = express();
-
 app.use(cors());
-
 
 const PORT = process.env.PORT || 5000;
 
@@ -91,14 +89,7 @@ app.use(session({
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: true,
-    cookie: { secure: false }  // For development purposes, use secure: true for production environments
 }));
-
-// Debugging middleware
-app.use((req, res, next) => {
-    console.log(req.session);
-    next();
-});
 
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
@@ -111,83 +102,37 @@ app.use((req, res, next) => {
 
 let oauth2_token_json = null;
 
-app.use(cookieParser());
+app.get('/connect', function (req, res) {
+    logger.info('GET /connect route hit');
+    logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
 
-// Middlewares
-
-// Middleware to check token and refresh if necessary
-app.use(async (req, res, next) => {
-    const { oauth2_token_json } = req.session;
-
-    if (!oauth2_token_json) {
-        return next();
-    }
-
-    const { access_token, refresh_token, expires_at } = oauth2_token_json;
-
-    // If token has expired, refresh it
-    if (Date.now() >= expires_at) {
-        try {
-            const authResponse = await oauthClient.refreshUsingToken(refresh_token);
-            const { access_token, refresh_token, expiresIn } = authResponse.getJson();
-
-            // Add the new token and expiry time to the session
-            req.session.oauth2_token_json = {
-                access_token,
-                refresh_token,
-                expires_at: Date.now() + expiresIn * 1000
-            };
-        } catch (e) {
-            logger.error("Error in token refresh middleware: ", e);
-            return next(new CustomError({ message: `Failed to refresh token: ${e.message}`, status: 500 }));
-        }
-    }
-
-    next();
-});
-app.use(cookieParser());
-
-
-app.get('/connect', async (req, res, next) => {
-    try {
-        logger.info('GET /connect route hit');
-        logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
-    
-        const authUri = req.oauthClient.authorizeUri({
-            scope: ['com.intuit.quickbooks.accounting'],
-            state: tokens.create(req.sessionID),
-        });
-        logger.info('Redirecting to: ' + authUri);
-        res.redirect(authUri);
-    } catch (e) {
-        logger.error("Error in /connect: ", e);
-        next(new CustomError({ message: `Failed to redirect to authUri: ${e.message}`, status: 500 }));
-    }
+    const authUri = req.oauthClient.authorizeUri({
+        scope: ['com.intuit.quickbooks.accounting'],
+        state: tokens.create(req.sessionID),
+    });
+    logger.info('Redirecting to: ' + authUri);
+    res.redirect(authUri);
 });
 
 app.get('/callback', async (req, res, next) => {
+    // Ensure state parameter is present
     if (!req.query.state) {
         return next(new CustomError({ message: `Missing state parameter`, status: 400 }));
     }
+
+    // Validate CSRF token
     if (!tokens.verify(req.sessionID, req.query.state)) {
         return next(new CustomError({ message: `Invalid CSRF token`, status: 400 }));
     }
+
     try {
-        const authResponse = await oauthClient.createToken(req.url).catch(e => { throw e; });
-        logger.debug("authResponse: " + JSON.stringify(authResponse));
+        const authResponse = await oauthClient.createToken(req.url);
         const { access_token, refresh_token, expires_in } = authResponse.getJson();
-        logger.debug("access_token: " + access_token);
-        logger.debug("refresh_token: " + refresh_token);
-        logger.debug("expires_in: " + expires_in);
+        req.session.oauth2_token_json = { access_token, refresh_token, expires_in };
+        //res.send(req.session.oauth2_token_json); old code
 
-        // Log the creation and expiry date/time of the token
-        const created_at = Date.now();
-        const expires_at = created_at + expires_in * 1000;
-        logger.debug("Token created at: " + new Date(created_at).toISOString());
-        logger.debug("Token expires at: " + new Date(expires_at).toISOString());
+        res.redirect(`https://6b0c-73-68-198-127.ngrok-free.app/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`); //put this "localhost ---- URL " in environment variables
 
-        req.session.oauth2_token_json = { access_token, refresh_token, expires_in, created_at, expires_at };
-        res.redirect(`https://6b0c-73-68-198-127.ngrok-free.app/callback?token=${JSON.stringify(req.session.oauth2_token_json)}`); 
     } catch (e) {
         logger.error("Error in /callback: ", e);
         next(new CustomError({ message: `Failed to create token: ${e.message}`, status: 500 }));
@@ -195,20 +140,57 @@ app.get('/callback', async (req, res, next) => {
 });
 
 
+app.post('/storeToken', async (req, res, next) => {
+    try {
+        const { access_token, refresh_token, expires_in } = req.body;
+
+        // Validation of input data
+        if(!access_token || !refresh_token || !expires_in){
+            throw new Error("Missing required field(s)");
+        }
+
+        const expiryTime = parseInt(expires_in); // make sure expires_in is a number
+
+        if(isNaN(expiryTime)){
+            throw new Error("expires_in must be a number");
+        }
+
+        // Save tokens in Redis
+        const access_token_res = await client.set('access_token', access_token, 'EX', expiryTime);
+        const refresh_token_res = await client.set('refresh_token', refresh_token);
+
+        // Check if the tokens were stored correctly
+        if (access_token_res !== 'OK' || refresh_token_res !== 'OK') {
+            throw new Error("Failed to store tokens in Redis");
+        }
+
+        res.sendStatus(200);
+    } catch (e) {
+        logger.error("Error in /storeToken: ", e);
+        next(new CustomError({ message: `Failed to store token: ${e.message}`, status: 500 }));
+    }
+});
+
+// Route for token refresh
 app.get('/refreshToken', async (req, res, next) => {
     try {
-        if (!req.session || !req.session.oauth2_token_json || !req.session.oauth2_token_json.refresh_token) {
+        const refresh_token = await client.get('refresh_token');
+
+        if(!refresh_token){
             throw new Error("No refresh token available");
         }
 
-        const authResponse = await oauthClient.refreshUsingToken(req.session.oauth2_token_json.refresh_token).catch(e => { throw e; });
+        // Call the method for refreshing tokens
+        const authResponse = await oauthClient.refreshUsingToken(refresh_token);
+
         const { access_token, expires_in } = authResponse.getJson();
 
-        req.session.oauth2_token_json.access_token = access_token;
-        req.session.oauth2_token_json.expires_in = expires_in;
-        req.session.oauth2_token_json.created_at = Date.now();
-        req.session.oauth2_token_json.expires_at = Date.now() + expires_in * 1000;
-        req.session.oauth2_token_json.realmId = oauthClient.getToken().realmId; // store company ID
+        // Save the new access token in Redis
+        const access_token_res = await client.set('access_token', access_token, 'EX', expires_in);
+
+        if (access_token_res !== 'OK') {
+            throw new Error("Failed to store new access token in Redis");
+        }
 
         res.sendStatus(200);
     } catch (e) {
@@ -217,63 +199,18 @@ app.get('/refreshToken', async (req, res, next) => {
     }
 });
 
+
 app.get('/getCompanyInfo', async (req, res, next) => {
     const companyID = oauthClient.getToken().realmId;
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
-
-    // Retrieve the access token from the cookie
-    const cookie = req.cookies.quickbooks_token;
-    const tokenObj = JSON.parse(cookie);
+    const finalUrl = `${url}v3/company/${companyID}/companyinfo/${companyID}`;
 
     try {
-        logger.debug("Token Object Received: " + JSON.stringify(tokenObj));
-
-        // Validate the token object
-        if (!tokenObj || !tokenObj.access_token || !tokenObj.expires_in || !tokenObj.issued_at) {
-            throw new Error("Invalid token object");
-        }
-
-        // Check if the token has expired
-        const currentTime = Math.floor(Date.now() / 1000);  // current time in seconds since the Unix Epoch
-        if (currentTime >= tokenObj.issued_at + tokenObj.expires_in) {
-            // The token has expired, refresh it
-            const refreshResponse = await axios.get('/refreshToken');
-
-            if (refreshResponse.status !== 200) {
-                throw new Error("Failed to refresh the token");
-            }
-
-            // Retrieve the new token from the cookie
-            const newCookie = req.cookies.quickbooks_token;
-            const newTokenObj = JSON.parse(newCookie);
-
-            if (!newTokenObj || !newTokenObj.access_token) {
-                throw new Error("Failed to get the new token after refreshing");
-            }
-
-            tokenObj.access_token = newTokenObj.access_token;
-        }
-
-        // Set the token in the OAuth client
-        oauthClient.setToken({ access_token: tokenObj.access_token });
-
-        // Make the API call
-        const companyInfo = await oauthClient.makeApiCall({ url: `${url}v3/company/${companyID}/companyinfo/${companyID}` });
-
-        logger.debug("Company Info Retrieved: " + JSON.stringify(companyInfo.json));
-
-        res.json(companyInfo.json);
+        const authResponse = await oauthClient.makeApiCall({ url: finalUrl });
+        res.send(JSON.parse(authResponse.text()));
     } catch (e) {
         logger.error("Error in /getCompanyInfo: ", e);
-
-        if (e.message === 'Invalid token object' || e.message === 'The access token expired' ||
-            e.message === 'Failed to refresh the token' || e.message === 'Failed to get the new token after refreshing') {
-            res.status(401).json({ message: 'Unauthorized: ' + e.message });
-        } else {
-            logger.error("Detailed Error in /getCompanyInfo: ", e);
-
-            next(new CustomError({ message: `Failed to get company info: ${e.message}`, status: 500 }));
-        }
+        next(new CustomError({ message: `Failed to get company info: ${e.message}`, status: 500 }));
     }
 });
 
@@ -286,16 +223,6 @@ app.get('/getGeneralLedger', [
     if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
     }
-
-    if (!req.session || !req.session.oauth2_token_json || !req.session.oauth2_token_json.access_token) {
-        return next(new CustomError({ message: 'No access token available', status: 401 }));
-    }
-
-    // Retrieve the access token from the session
-    const { access_token } = req.session.oauth2_token_json;
-
-    // Set the token to the OAuth client
-    oauthClient.setToken({ access_token });
 
     const companyID = oauthClient.getToken().realmId;
     const url = oauthClient.environment == 'sandbox' ? OAuthClient.environment.sandbox : OAuthClient.environment.production;
@@ -320,15 +247,29 @@ app.get('/getGeneralLedger', [
 });
 
 
+app.get('/', (req, res) => {
+    res.send('Welcome to Quickbookks!');
+});
+
 app.use((err, req, res, next) => {
-    if (err instanceof CustomError) {
-        return res.status(err.status).send(err.message);
+    const status = err.status || 500;
+    res.status(status);
+    logger.error(`${status} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
+
+    if (process.env.NODE_ENV === 'development') {
+        res.json({
+            status: status,
+            message: err.message,
+            stack: err.stack
+        });
+    } else {
+        res.json({
+            status: status,
+            message: 'Something went wrong'
+        });
     }
-    res.status(500).send('Internal Server Error');
 });
 
-app.listen(PORT, () => {
-    logger.info(`Server running on port: ${PORT}`);
+app.listen(PORT, function () {
+    logger.info(`Started on port ${PORT}`);
 });
-
-module.exports = app;
