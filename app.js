@@ -65,6 +65,8 @@ app.get('/connect', function(req, res) {
     logger.info('GET /connect route hit');
     logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
     
+    const state = tokens.create(req.sessionID);
+    req.session.state = state; // store state parameter in session
     const authUri = req.oauthClient.authorizeUri({
         scope: ['com.intuit.quickbooks.accounting'],
         state: tokens.create(req.sessionID),
@@ -75,11 +77,11 @@ app.get('/connect', function(req, res) {
 
 app.get('/callback', function (req, res) {
    // Verify anti-forgery
-   if (!tools.verifyAntiForgery(req.session, req.query.state)) {
-    logger.error('Error - invalid anti-forgery CSRF response!');
-    return res.status(403).send('Error - invalid anti-forgery CSRF response!')
-  }
-  
+   if (req.session.state !== req.query.state) {
+    // Invalid state parameter
+    logger.error('Error - invalid state parameter!');
+    return res.status(403).send('Error - invalid state parameter!')
+}
     // Exchange auth code for access token
     req.oauthClient.createToken(req.url)
       .then(function (token) {
