@@ -95,13 +95,13 @@ app.get('/callback', function (req, res) {
             // We should decode and validate the ID token
             const decoded = jwt.verify(token.data.id_token, req.oauthClient.clientSecret);
             // If the callback is successful, redirect to /connected
-            res.redirect('/connected'); // adjust as needed
+            res.redirect('https://e071-73-68-198-127.ngrok-free.app/connected'); // adjust as needed
           } catch (e) {
             errorFn(e);
           }
         } else {
           // If OpenID isn't used, redirect to /connected
-          res.redirect('/connected'); // adjust as needed
+          res.redirect('https://e071-73-68-198-127.ngrok-free.app/connected'); // adjust as needed
         }
       })
       .catch(function (err) {
