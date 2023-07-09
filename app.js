@@ -9,6 +9,7 @@ const logger = require('./logger');
 const csrf = require('csrf');
 const tokens = new csrf(); 
 const cors = require('cors');
+const Tools = require('./tools/tools');
 
 let app = express();
 
@@ -33,6 +34,9 @@ let oauthClient = new OAuthClient({
     redirectUri: redirectUri,
     logging: true,
 });
+
+// Add Tools instantiation
+let tools = Tools
 
 // Log only key properties of the oauthClient
 logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
@@ -70,11 +74,11 @@ app.get('/connect', function(req, res) {
 });
 
 app.get('/callback', function (req, res) {
-    // Verify anti-forgery
-    if (!tokens.verify(req.sessionID, req.query.state)) {
-      logger.error('Error - invalid anti-forgery CSRF response!');
-      return res.status(403).send('Error - invalid anti-forgery CSRF response!')
-    }
+   // Verify anti-forgery
+   if (!tools.verifyAntiForgery(req.session, req.query.state)) {
+    logger.error('Error - invalid anti-forgery CSRF response!');
+    return res.status(403).send('Error - invalid anti-forgery CSRF response!')
+  }
   
     // Exchange auth code for access token
     req.oauthClient.createToken(req.url)
@@ -111,9 +115,9 @@ app.get('/callback', function (req, res) {
   });
   
 
-app.get('/refreshAccessToken', async (req, res) => {
+  app.get('/refreshAccessToken', async (req, res) => {
     try {
-        const authResponse = await oauthClient.refresh();
+        const authResponse = await tools.refreshTokens(req.session);
         oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
         res.send(oauth2_token_json);
     } catch(e) {

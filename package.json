@@ -12,6 +12,8 @@
   "dependencies": {
     "axios": "^1.4.0",
     "body-parser": "^1.19.0",
+    "btoa": "^1.2.1",
+    "client-oauth2": "^4.3.3",
     "connect-redis": "^7.1.0",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
@@ -28,6 +30,8 @@
     "passport": "^0.6.0",
     "passport-oauth2": "^1.7.0",
     "redis": "^4.6.7",
+    "request": "^2.88.2",
+    "requst": "^0.0.1-security",
     "uuid": "^9.0.0",
     "winston": "^3.9.0",
     "winston-daily-rotate-file": "^4.7.1"
