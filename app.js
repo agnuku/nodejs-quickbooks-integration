@@ -8,6 +8,7 @@ const config = require('./config.json');
 const logger = require('./logger');
 const csrf = require('csrf');
 const tokens = new csrf(); 
+const cors = require('cors');
 
 let app = express();
 
@@ -35,6 +36,8 @@ let oauthClient = new OAuthClient({
 
 // Log only key properties of the oauthClient
 logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
+
+app.use(cors());
 
 app.use(session({
     secret: config.sessionSecret,
