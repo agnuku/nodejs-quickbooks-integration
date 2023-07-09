@@ -69,16 +69,47 @@ app.get('/connect', function(req, res) {
     res.redirect(authUri);
 });
 
-app.get('/callback', async (req, res) => {
-    try {
-        const authResponse = await oauthClient.createToken(req.url);
-        oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
-        res.send(oauth2_token_json);
-    } catch(e) {
-        console.error("Error in /callback: ", e);
-        res.status(500).send(`Failed to create token: ${e.message}`);
+app.get('/callback', function (req, res) {
+    // Verify anti-forgery
+    if (!tokens.verify(req.sessionID, req.query.state)) {
+      logger.error('Error - invalid anti-forgery CSRF response!');
+      return res.status(403).send('Error - invalid anti-forgery CSRF response!')
     }
-});
+  
+    // Exchange auth code for access token
+    req.oauthClient.createToken(req.url)
+      .then(function (token) {
+        // Store token - this would be where tokens would need to be
+        // persisted (in a SQL DB, for example).
+        req.session.token = token;
+        req.session.realmId = token.getToken().realmId;
+  
+        const errorFn = function (e) {
+          logger.error('Invalid JWT token!');
+          logger.error(e);
+          res.redirect('/');
+        }
+  
+        if (token.data.id_token) {
+          try {
+            // We should decode and validate the ID token
+            const decoded = jwt.verify(token.data.id_token, req.oauthClient.clientSecret);
+            // If the callback is successful, redirect to /connected
+            res.redirect('/connected'); // adjust as needed
+          } catch (e) {
+            errorFn(e);
+          }
+        } else {
+          // If OpenID isn't used, redirect to /connected
+          res.redirect('/connected'); // adjust as needed
+        }
+      })
+      .catch(function (err) {
+        logger.error(err);
+        res.status(500).send(`Failed to create token: ${err.message}`);
+      });
+  });
+  
 
 app.get('/refreshAccessToken', async (req, res) => {
     try {
