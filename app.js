@@ -87,7 +87,7 @@ let oauth2_token_json = null; // Add this line
     req.session.state = state; // store state parameter in session
     
     const authUri = req.oauthClient.authorizeUri({
-        scope: ['com.intuit.quickbooks.accounting'],
+        scope: ['com.intuit.quickbooks.accounting', 'openid', 'profile', 'email'],
         state: state, // use the generated CSRF token
     });
     logger.info('Redirecting to: ' + authUri);
@@ -108,32 +108,14 @@ app.get('/callback', function (req, res) {
         req.session.token = token;
         req.session.realmId = token.getToken().realmId;
   
-        const errorFn = function (e) {
-          logger.error('Invalid JWT token!');
-          logger.error(e);
-          res.redirect('/');
-        }
-  
-        if (token.data.id_token) {
-          try {
-            // We should decode and validate the ID token
-            const decoded = jwt.verify(token.data.id_token, req.oauthClient.clientSecret);
-            // If the callback is successful, redirect to /connected
-            res.redirect('https://e071-73-68-198-127.ngrok-free.app/connected'); // adjust as needed
-          } catch (e) {
-            errorFn(e);
-          }
-        } else {
-          // If OpenID isn't used, redirect to /connected
-          res.redirect('https://e071-73-68-198-127.ngrok-free.app/connected'); // adjust as needed
-        }
+        // If the callback is successful, redirect to /connected
+        res.redirect('https://e071-73-68-198-127.ngrok-free.app/connected'); // adjust as needed
       })
       .catch(function (err) {
         logger.error(err);
         res.status(500).send(`Failed to create token: ${err.message}`);
       });
-  });
-  
+});  
 
   app.get('/refreshAccessToken', async (req, res) => {
     try {
