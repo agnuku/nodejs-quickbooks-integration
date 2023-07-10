@@ -182,7 +182,7 @@ app.get('/revoke', function (req, res) {
   }
 
   // Form the basicAuth string
-  var basicAuth = btoa(config.clientId + ':' + config.clientSecret);
+  var basicAuth = Buffer.from(config.clientId + ':' + config.clientSecret).toString('base64');
   
   var url = config.revoke_uri;
 
@@ -192,11 +192,9 @@ app.get('/revoke', function (req, res) {
     headers: {
       'Authorization': 'Basic ' + basicAuth,
       'Accept': 'application/json',
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/x-www-form-urlencoded'
     },
-    body: JSON.stringify({
-      'token': accessToken
-    })
+    body: `token=${accessToken}`
   }, function (err, response, body) {
     if(err) {
       console.log('Error when revoking token:', err);
@@ -215,7 +213,6 @@ app.get('/revoke', function (req, res) {
     res.json({response: "Revoke successful"});
   });
 });
-
 
 
 app.get('/api_call/refresh', function (req, res) {
