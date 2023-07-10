@@ -117,16 +117,95 @@ app.get('/callback', function (req, res) {
       });
 });  
 
-  app.get('/refreshAccessToken', async (req, res) => {
-    try {
-        const authResponse = await tools.refreshTokens(req.session);
-        oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
-        res.send(oauth2_token_json);
-    } catch(e) {
-        console.error("Error in /refreshAccessToken: ", e);
-        res.status(500).send(`Failed to refresh token: ${e.message}`);
+//   app.get('/refreshAccessToken', async (req, res) => {
+//     try {
+//         const authResponse = await tools.refreshTokens(req.session);
+//         oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
+//         res.send(oauth2_token_json);
+//     } catch(e) {
+//         console.error("Error in /refreshAccessToken: ", e);
+//         res.status(500).send(`Failed to refresh token: ${e.message}`);
+//     }
+// });
+
+
+app.get('/api_call', function (req, res) {
+    var token = tools.getToken(req.session)
+    if(!token) return res.json({error: 'Not authorized'})
+    if(!req.session.realmId) return res.json({
+      error: 'No realm ID.  QBO calls only work if the accounting scope was passed!'
+    })
+
+    // Set up API call (with OAuth2 accessToken)
+    var url = config.api_uri + req.session.realmId + '/companyinfo/' + req.session.realmId
+    console.log('Making API call to: ' + url)
+    var requestObj = {
+      url: url,
+      headers: {
+        'Authorization': 'Bearer ' + token.accessToken,
+        'Accept': 'application/json'
+      }
     }
+
+    // Make API call
+    request(requestObj, function (err, response) {
+      // Check if 401 response was returned - refresh tokens if so!
+      tools.checkForUnauthorized(req, requestObj, err, response).then(function ({err, response}) {
+        if(err || response.statusCode != 200) {
+          return res.json({error: err, statusCode: response.statusCode})
+        }
+
+        // API Call was a success!
+        res.json(JSON.parse(response.body))
+      }, function (err) {
+        console.log(err)
+        return res.json(err)
+      })
+    })
 });
+
+app.get('/api_call/revoke', function (req, res) {
+    var token = tools.getToken(req.session)
+    if(!token) return res.json({error: 'Not authorized'})
+
+    var url = tools.revoke_uri
+    request({
+      url: url,
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + tools.basicAuth,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        'token': token.accessToken
+      })
+    }, function (err, response, body) {
+      if(err || response.statusCode != 200) {
+        return res.json({error: err, statusCode: response.statusCode})
+      }
+      tools.clearToken(req.session)
+      res.json({response: "Revoke successful"})
+    })
+});
+
+app.get('/api_call/refresh', function (req, res) {
+    var token = tools.getToken(req.session)
+    if(!token) return res.json({error: 'Not authorized'})
+
+    tools.refreshTokens(req.session).then(function(newToken) {
+      // We have new tokens!
+      res.json({
+        accessToken: newToken.accessToken,
+        refreshToken: newToken.refreshToken
+      })
+    }, function(err) {
+      // Did we try to call refresh on an old token?
+      console.log(err)
+      res.json(err)
+    })
+});
+
 
 app.get('/getCompanyInfo', async (req, res) => {
     const companyID = oauthClient.getToken().realmId;
@@ -138,7 +217,19 @@ app.get('/getCompanyInfo', async (req, res) => {
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
         console.error("Error in /getCompanyInfo: ", e);
-        res.status(500).send(`Failed to get company info: ${e.message}`);
+
+        if (e.status == 401) {
+            // Unauthorized error, let's refresh the token
+            tools.checkForUnauthorized(req, requestObj, err, e)
+                .then(({err, response}) => {
+                    // Retry the api call
+                })
+                .catch((err) => {
+                    res.status(500).send(`Failed to refresh token: ${err.message}`);
+                });
+        } else {
+            res.status(500).send(`Failed to get company info: ${e.message}`);
+        }
     }
 });
 
@@ -156,8 +247,20 @@ app.get('/getGeneralLedger', async (req, res) => {
         const authResponse = await oauthClient.makeApiCall({ url: urlWithParams });
         res.send(JSON.parse(authResponse.text()));
     } catch(e) {
-        console.error("Error in /getGeneralLedger: ", e);
-        res.status(500).send(`Failed to get general ledger: ${e.message}`);
+        console.error("Error in /getCompanyInfo: ", e);
+
+        if (e.status == 401) {
+            // Unauthorized error, let's refresh the token
+            tools.checkForUnauthorized(req, requestObj, err, e)
+                .then(({err, response}) => {
+                    // Retry the api call
+                })
+                .catch((err) => {
+                    res.status(500).send(`Failed to refresh token: ${err.message}`);
+                });
+        } else {
+            res.status(500).send(`Failed to get company info: ${e.message}`);
+        }
     }
 });
 
