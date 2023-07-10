@@ -166,39 +166,42 @@ app.get('/api_call', function (req, res) {
     })
 });
 
-app.get('/api_call/revoke', function (req, res) {
-    // Fetch the token from the session
-    var token = req.session.token;
-    if(!token) return res.json({error: 'Not authorized'})
+app.get('/revoke', function (req, res) {
+  // Fetch the token from the session
+  var token = req.session.token;
+  if(!token) return res.json({error: 'Not authorized'})
 
-    // Form the basicAuth string
-    var basicAuth = btoa(config.clientId + ':' + config.clientSecret);
-    
-    var url = config.revoke_uri;
+  // Access the actual accessToken
+  var accessToken = token.getToken().accessToken;
 
-    request({
-      url: url,
-      method: 'POST',
-      headers: {
-        'Authorization': 'Basic ' + basicAuth,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        'token': token.accessToken
-      })
-    }, function (err, response, body) {
-      if(err || response.statusCode != 200) {
-        return res.json({error: err, statusCode: response.statusCode})
-      }
+  // Form the basicAuth string
+  var basicAuth = btoa(config.clientId + ':' + config.clientSecret);
+  
+  var url = config.revoke_uri;
 
-      // Clear the token from the session
-      req.session.token = null;
-      req.session.realmId = null;
+  request({
+    url: url,
+    method: 'POST',
+    headers: {
+      'Authorization': 'Basic ' + basicAuth,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      'token': accessToken
+    })
+  }, function (err, response, body) {
+    if(err || response.statusCode != 200) {
+      return res.json({error: err, statusCode: response.statusCode})
+    }
 
-      console.log('Token successfully revoked');
-      res.json({response: "Revoke successful"})
-    });
+    // Clear the token from the session
+    req.session.token = null;
+    req.session.realmId = null;
+
+    console.log('Token successfully revoked');
+    res.json({response: "Revoke successful"})
+  });
 });
 
 
