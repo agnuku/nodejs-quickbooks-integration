@@ -12,32 +12,37 @@ const Tools = require('./tools/tools');
 const request = require('request');
 const btoa = require('btoa');
 const RedisStore = require('connect-redis').default;
-const redis = require('redis');
-const redisClient = redis.createClient({
+const Redis = require('ioredis');
+
+const redis = new Redis({
   password: 'JME1T2W9hOj7A2vwzuAzLSeh2AgM5lAa',
   host: 'redis-17187.c92.us-east-1-3.ec2.cloud.redislabs.com',
-  port: 17187
+  port: 17187,
+  retryStrategy: function(times) {
+    const delay = Math.min(times * 50, 2000);
+    return delay;
+  }
 });
 
 let app = express();
 
-redisClient.on('connect', function () {
+redis.on('connect', function () {
     logger.info('Redis client connected');
 });
 
-redisClient.on('ready', function () {
+redis.on('ready', function () {
     logger.info('Redis client is ready');
 });
 
-redisClient.on('reconnecting', function () {
+redis.on('reconnecting', function () {
     logger.info('Redis client reconnecting');
 });
 
-redisClient.on('end', function () {
+redis.on('end', function () {
     logger.info('Redis client connection ended');
 });
 
-redisClient.on('error', function (err) {
+redis.on('error', function (err) {
     logger.error('Something went wrong with Redis client ' + err);
 });
 
@@ -64,7 +69,7 @@ let tools = Tools
 app.use(cors());
 
 app.use(session({
-    store: new RedisStore({ client: redisClient }),
+    store: new RedisStore({ client: redis }),
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: false,
@@ -122,17 +127,6 @@ app.get('/callback', function (req, res) {
         res.status(500).send(`Failed to create token: ${err.message}`);
       });
 });  
-
-//   app.get('/refreshAccessToken', async (req, res) => {
-//     try {
-//         const authResponse = await tools.refreshTokens(req.session);
-//         oauth2_token_json = JSON.stringify(authResponse.getJson(), null, 2);
-//         res.send(oauth2_token_json);
-//     } catch(e) {
-//         console.error("Error in /refreshAccessToken: ", e);
-//         res.status(500).send(`Failed to refresh token: ${e.message}`);
-//     }
-// });
 
 
 app.get('/api_call', function (req, res) {
