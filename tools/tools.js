@@ -41,7 +41,8 @@ var Tools = function () {
       var json = JSON.parse(response.body)
       tools.openid_configuration = json
       tools.openid_uri = json.userinfo_endpoint
-      tools.revoke_uri = json.revocation_endpoint
+      
+      tools.revoke_uri = config.revoke_uri;
 
       // Re-create OAuth2 Client
       authConfig.authorizationUri = json.authorization_endpoint

@@ -6,6 +6,7 @@
   "redisPassword": "JME1T2W9hOj7A2vwzuAzLSeh2AgM5lAa",
   "configurationEndpoint": "https://developer.api.intuit.com/.well-known/openid_sandbox_configuration/",
   "api_uri": "https://quickbooks.api.intuit.com/v3/company/",
+  "revoke_uri": "https://developer.api.intuit.com/v2/oauth2/tokens/revoke",
   "scopes": {
     "sign_in_with_intuit": [
       "com.intuit.quickbooks.accounting",
@@ -27,7 +28,6 @@
       "address"
     ]
   },
-
   "sheetId":"1ECJmT3_uyHDYflsgEH9DaS1gsju1_CUzE55oUlYrMw8",
   "sheetName":"IntuitSheet"
 }
