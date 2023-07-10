@@ -1,4 +1,3 @@
-require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
@@ -12,15 +11,37 @@ const cors = require('cors');
 const Tools = require('./tools/tools');
 const request = require('request');
 const btoa = require('btoa');
+const RedisStore = require('connect-redis').default;
+const redis = require('redis');
+const redisClient = redis.createClient({
+  password: 'JME1T2W9hOj7A2vwzuAzLSeh2AgM5lAa',
+  host: 'redis-17187.c92.us-east-1-3.ec2.cloud.redislabs.com',
+  port: 17187
+});
 
 let app = express();
-let secret;
 
-// Get the port from environment or use 4000 as default
+redisClient.on('connect', function () {
+    logger.info('Redis client connected');
+});
+
+redisClient.on('ready', function () {
+    logger.info('Redis client is ready');
+});
+
+redisClient.on('reconnecting', function () {
+    logger.info('Redis client reconnecting');
+});
+
+redisClient.on('end', function () {
+    logger.info('Redis client connection ended');
+});
+
+redisClient.on('error', function (err) {
+    logger.error('Something went wrong with Redis client ' + err);
+});
+
 const PORT = process.env.PORT || 4000;
-
-logger.debug('process.env.NODE_ENV: ' + process.env.NODE_ENV);
-logger.debug('process.env.PORT: ' + process.env.PORT);
 
 // Define redirectUri based on the environment
 const redirectUri = process.env.NODE_ENV === 'production' 
@@ -29,7 +50,6 @@ const redirectUri = process.env.NODE_ENV === 'production'
 
 logger.debug('redirectUri: ' + redirectUri);
 
-// Instantiate new client
 let oauthClient = new OAuthClient({
     clientId: config.clientId,
     clientSecret: config.clientSecret,
@@ -41,42 +61,26 @@ let oauthClient = new OAuthClient({
 // Add Tools instantiation
 let tools = Tools
 
-// Log only key properties of the oauthClient
-logger.info("OAuth Client created with clientId: " + oauthClient.clientId + ", environment: " + oauthClient.environment);
-
 app.use(cors());
 
 app.use(session({
+    store: new RedisStore({ client: redisClient }),
     secret: config.sessionSecret,
     resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false } // 'secure: true' for HTTPS, 'false' for HTTP
+    saveUninitialized: false,
+    cookie: { secure: false, maxAge: 86400000 } // secure: true for HTTPS
 }));
 
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
-// Set oauthClient in middleware so we can access it in routes
 app.use((req, res, next) => {
     req.oauthClient = oauthClient;
     logger.debug("OAuthClient added to request object with clientId: " + req.oauthClient.clientId);
     next();
 });
 
-let oauth2_token_json = null; // Add this line
-
-// app.get('/test', function(req, res) {
-//     req.session.testVar = 'Hello World';
-//     res.send('Test variable set');
-//   });
-  
-//   app.get('/check', function(req, res) {
-//     if (req.session.testVar) {
-//       res.send('Test variable: ' + req.session.testVar);
-//     } else {
-//       res.send('No test variable found');
-//     }
-//   });
+let oauth2_token_json = null;
 
   app.get('/connect', function(req, res) {
     logger.info('GET /connect route hit');
