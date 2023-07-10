@@ -12,6 +12,7 @@ const cors = require('cors');
 const Tools = require('./tools/tools');
 
 let app = express();
+let secret;
 
 // Get the port from environment or use 4000 as default
 const PORT = process.env.PORT || 4000;
@@ -47,6 +48,7 @@ app.use(session({
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: true,
+    cookie: { secure: false } // 'secure: true' for HTTPS, 'false' for HTTP
 }));
 
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -61,27 +63,43 @@ app.use((req, res, next) => {
 
 let oauth2_token_json = null; // Add this line
 
-app.get('/connect', function(req, res) {
+// app.get('/test', function(req, res) {
+//     req.session.testVar = 'Hello World';
+//     res.send('Test variable set');
+//   });
+  
+//   app.get('/check', function(req, res) {
+//     if (req.session.testVar) {
+//       res.send('Test variable: ' + req.session.testVar);
+//     } else {
+//       res.send('No test variable found');
+//     }
+//   });
+
+  app.get('/connect', function(req, res) {
     logger.info('GET /connect route hit');
     logger.debug("In /connect route, req.oauthClient clientId: " + req.oauthClient.clientId);
-    
-    const state = tokens.create(req.sessionID);
+
+    secret = tokens.secretSync();  // Generate secret
+    req.session.csrfSecret = secret; // Store secret in the session
+
+    const state = tokens.create(secret); // Create a CSRF token
     req.session.state = state; // store state parameter in session
+    
     const authUri = req.oauthClient.authorizeUri({
         scope: ['com.intuit.quickbooks.accounting'],
-        state: tokens.create(req.sessionID),
+        state: state, // use the generated CSRF token
     });
     logger.info('Redirecting to: ' + authUri);
     res.redirect(authUri);
 });
-
 app.get('/callback', function (req, res) {
-   // Verify anti-forgery
-   if (req.session.state !== req.query.state) {
-    // Invalid state parameter
-    logger.error('Error - invalid state parameter!');
-    return res.status(403).send('Error - invalid state parameter!')
-}
+    // Verify anti-forgery
+    if (!tokens.verify(req.session.csrfSecret, req.query.state)) {  // Verify CSRF token
+     // Invalid state parameter
+     logger.error('Error - invalid state parameter!');
+     return res.status(403).send('Error - invalid state parameter!')
+    }
     // Exchange auth code for access token
     req.oauthClient.createToken(req.url)
       .then(function (token) {
