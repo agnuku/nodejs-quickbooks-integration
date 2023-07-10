@@ -10,6 +10,8 @@ const csrf = require('csrf');
 const tokens = new csrf(); 
 const cors = require('cors');
 const Tools = require('./tools/tools');
+const request = require('request');
+const btoa = require('btoa');
 
 let app = express();
 let secret;
@@ -165,15 +167,20 @@ app.get('/api_call', function (req, res) {
 });
 
 app.get('/api_call/revoke', function (req, res) {
-    var token = tools.getToken(req.session)
+    // Fetch the token from the session
+    var token = req.session.token;
     if(!token) return res.json({error: 'Not authorized'})
 
-    var url = tools.revoke_uri
+    // Form the basicAuth string
+    var basicAuth = btoa(config.clientId + ':' + config.clientSecret);
+    
+    var url = config.revoke_uri;
+
     request({
       url: url,
       method: 'POST',
       headers: {
-        'Authorization': 'Basic ' + tools.basicAuth,
+        'Authorization': 'Basic ' + basicAuth,
         'Accept': 'application/json',
         'Content-Type': 'application/json'
       },
@@ -184,10 +191,16 @@ app.get('/api_call/revoke', function (req, res) {
       if(err || response.statusCode != 200) {
         return res.json({error: err, statusCode: response.statusCode})
       }
-      tools.clearToken(req.session)
+
+      // Clear the token from the session
+      req.session.token = null;
+      req.session.realmId = null;
+
+      console.log('Token successfully revoked');
       res.json({response: "Revoke successful"})
-    })
+    });
 });
+
 
 app.get('/api_call/refresh', function (req, res) {
     var token = tools.getToken(req.session)
