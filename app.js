@@ -169,10 +169,17 @@ app.get('/api_call', function (req, res) {
 app.get('/revoke', function (req, res) {
   // Fetch the token from the session
   var token = req.session.token;
-  if(!token) return res.json({error: 'Not authorized'})
+  if(!token) {
+    console.log('No token found in the session');
+    return res.status(401).json({error: 'Not authorized', detailedError: 'No token found in the session'});
+  }
 
   // Access the actual accessToken
   var accessToken = token.getToken().accessToken;
+  if(!accessToken) {
+    console.log('No access token found in the session token');
+    return res.status(401).json({error: 'Not authorized', detailedError: 'No access token found in the session token'});
+  }
 
   // Form the basicAuth string
   var basicAuth = btoa(config.clientId + ':' + config.clientSecret);
@@ -191,8 +198,13 @@ app.get('/revoke', function (req, res) {
       'token': accessToken
     })
   }, function (err, response, body) {
-    if(err || response.statusCode != 200) {
-      return res.json({error: err, statusCode: response.statusCode})
+    if(err) {
+      console.log('Error when revoking token:', err);
+      return res.status(500).json({error: 'Failed to revoke token', detailedError: err.message});
+    }
+    if(response.statusCode != 200) {
+      console.log('Non-200 response when revoking token:', response.statusCode);
+      return res.status(response.statusCode).json({error: 'Failed to revoke token', detailedError: 'Received a non-200 HTTP response'});
     }
 
     // Clear the token from the session
@@ -200,9 +212,10 @@ app.get('/revoke', function (req, res) {
     req.session.realmId = null;
 
     console.log('Token successfully revoked');
-    res.json({response: "Revoke successful"})
+    res.json({response: "Revoke successful"});
   });
 });
+
 
 
 app.get('/api_call/refresh', function (req, res) {
